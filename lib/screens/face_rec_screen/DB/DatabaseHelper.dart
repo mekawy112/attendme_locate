@@ -4,13 +4,14 @@ import 'package:path_provider/path_provider.dart';
 
 class DatabaseHelper {
   static const _databaseName = "MyDatabase.db";
-  static const _databaseVersion = 1;
+  static const _databaseVersion = 2;
 
   static const table = 'my_table';
 
   static const columnId = 'id';
   static const columnName = 'name';
   static const columnEmbedding = 'embedding';
+  static const columnStudentId = 'student_id';
 
   late Database _db;
 
@@ -22,6 +23,7 @@ class DatabaseHelper {
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -31,9 +33,17 @@ class DatabaseHelper {
           CREATE TABLE $table (
             $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
             $columnName TEXT NOT NULL,
-            $columnEmbedding TEXT NOT NULL
+            $columnEmbedding TEXT NOT NULL,
+            $columnStudentId TEXT NOT NULL
           )
           ''');
+  }
+  
+  // ترقية قاعدة البيانات في حال كانت موجودة مسبقًا
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $columnStudentId TEXT DEFAULT "unknown"');
+    }
   }
 
   // Helper methods
@@ -45,10 +55,70 @@ class DatabaseHelper {
     return await _db.insert(table, row);
   }
 
+  // Query the database with custom conditions
+  Future<List<Map<String, dynamic>>> query(String table, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<dynamic>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) async {
+    return await _db.query(
+      table,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      groupBy: groupBy,
+      having: having,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
   // All of the rows are returned as a list of maps, where each map is
   // a key-value list of columns.
   Future<List<Map<String, dynamic>>> queryAllRows() async {
     return await _db.query(table);
+  }
+
+  // Consulta para buscar un estudiante por su ID
+  Future<List<Map<String, dynamic>>> queryStudentById(String studentId) async {
+    return await query(
+      table,
+      where: '$columnStudentId = ?',
+      whereArgs: [studentId],
+    );
+  }
+
+  // Eliminar registros por ID de estudiante
+  Future<int> deleteByStudentId(String studentId) async {
+    return await _db.delete(
+      table,
+      where: '$columnStudentId = ?',
+      whereArgs: [studentId],
+    );
+  }
+
+  // Verificar si un estudiante ya existe
+  Future<bool> checkStudentExists(String studentId) async {
+    final result = await queryStudentById(studentId);
+    return result.isNotEmpty;
+  }
+
+  // Deletes the row specified by the id. The number of affected rows is
+  // returned. This should be 1 as long as the row exists.
+  Future<int> delete(int id) async {
+    return await _db.delete(
+      table,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
   }
 
   // All of the methods (insert, query, update, delete) can also be done using
@@ -65,16 +135,6 @@ class DatabaseHelper {
     return await _db.update(
       table,
       row,
-      where: '$columnId = ?',
-      whereArgs: [id],
-    );
-  }
-
-  // Deletes the row specified by the id. The number of affected rows is
-  // returned. This should be 1 as long as the row exists.
-  Future<int> delete(int id) async {
-    return await _db.delete(
-      table,
       where: '$columnId = ?',
       whereArgs: [id],
     );

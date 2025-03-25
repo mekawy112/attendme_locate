@@ -11,8 +11,8 @@ class WelcomeText extends StatelessWidget {
   Widget build(BuildContext context) {
     return MyRichText(
         firstText: 'Welcome,\n',
-        firstTextStyle: TextStyles.font24BlueSemiBold,
-        secondTextStyle: TextStyles.font24BlueRegular,
+        firstTextStyle: TextStyles.font24DarkBlueMedium,
+        secondTextStyle:TextStyles.font24DarkBlueMedium,
         secondText:'Nourhan Magdy'
       // '${CacheHelper.getData(key: 'displayName').split(' ')[0]} ${CacheHelper.getData(key: 'displayName').split(' ')[1]}',
 

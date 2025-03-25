@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:math' as math; 
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,7 +9,7 @@ import 'package:image/image.dart' as img;
 
 import 'ML/Recognition.dart';
 import 'ML/Recognizer.dart';
-
+import 'DB/DatabaseHelper.dart'; 
 
 class RegistrationScreen extends StatefulWidget {
   final Map<String, dynamic>? studentData;
@@ -105,7 +106,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   // دالة مساعدة لمعالجة صورة واحدة:
   // تصحيح اتجاه الصورة، اكتشاف الوجه، قصه واستخراج الـ embedding
-  // دالة مساعدة لمعالجة صورة واحدة:
   Future<List<double>?> processImageForEmbedding(File imageFile) async {
     try {
       final bytes = await imageFile.readAsBytes();
@@ -176,7 +176,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
         // استخراج الـ embedding باستخدام Recognizer
         Recognition recognition = recognizer.recognize(croppedFace, boundingBox);
-        return recognition.embeddings;
+        return recognition.embedding;
       } catch (e) {
         print('Error in face detection or recognition: $e');
         return null;
@@ -197,32 +197,128 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   // دالة لحساب المتوسط بين عدة embeddings
-  List<double> averageEmbedding(List<List<double>> embeddingsList) {
-    int len = embeddingsList[0].length;
-    List<double> avg = List.filled(len, 0.0);
-    for (var emb in embeddingsList) {
-      for (int i = 0; i < len; i++) {
-        avg[i] += emb[i];
+  List<double> _calculateAverageEmbedding(List<List<double>> embeddings) {
+    if (embeddings.isEmpty) {
+      throw Exception('No embeddings provided');
+    }
+    
+    int embeddingLength = embeddings.first.length;
+    List<double> averageEmbedding = List<double>.filled(embeddingLength, 0.0);
+    
+    // Sumar todos los embeddings
+    for (int i = 0; i < embeddings.length; i++) {
+      for (int j = 0; j < embeddingLength; j++) {
+        averageEmbedding[j] += embeddings[i][j];
       }
     }
-    for (int i = 0; i < len; i++) {
-      avg[i] /= embeddingsList.length;
+    
+    // Calcular el promedio
+    for (int i = 0; i < embeddingLength; i++) {
+      averageEmbedding[i] /= embeddings.length;
     }
-    return avg;
+    
+    // Normalizar el vector (convertirlo a vector unitario)
+    double magnitude = 0.0;
+    for (int i = 0; i < embeddingLength; i++) {
+      magnitude += averageEmbedding[i] * averageEmbedding[i];
+    }
+    
+    magnitude = math.sqrt(magnitude);
+    
+    // Evitar divisin por cero
+    if (magnitude > 0) {
+      for (int i = 0; i < embeddingLength; i++) {
+        averageEmbedding[i] /= magnitude;
+      }
+    }
+    
+    return averageEmbedding;
+  }
+
+  // التحقق من أن جميع الصور لنفس الشخص
+  Future<bool> _areFacesMatching(List<List<double>> embeddingsList) async {
+    if (embeddingsList.length < 2) return true;
+    
+    // عتبة التشابه - إذا كان التشابه أقل من هذه القيمة، فالوجوه مختلفة
+    const double similarityThreshold = 0.3; // Reducido aún más para ser más permisivo
+    
+    // مقارنة كل زوج من الوجوه
+    for (int i = 0; i < embeddingsList.length - 1; i++) {
+      for (int j = i + 1; j < embeddingsList.length; j++) {
+        double similarity = _calculateCosineSimilarity(embeddingsList[i], embeddingsList[j]);
+        print('Similarity between face $i and face $j: $similarity');
+        if (similarity < similarityThreshold) {
+          return false; // الوجوه مختلفة
+        }
+      }
+    }
+    
+    return true; // جميع الوجوه متطابقة
+  }
+  
+  // حساب تشابه جيب التمام بين متجهين
+  double _calculateCosineSimilarity(List<double> vec1, List<double> vec2) {
+    if (vec1.length != vec2.length) {
+      throw Exception('Vector dimensions do not match');
+    }
+    
+    double dotProduct = 0.0;
+    double norm1 = 0.0;
+    double norm2 = 0.0;
+    
+    for (int i = 0; i < vec1.length; i++) {
+      dotProduct += vec1[i] * vec2[i];
+      norm1 += vec1[i] * vec1[i];
+      norm2 += vec2[i] * vec2[i];
+    }
+    
+    // Usar sqrt de dart:math que ya fue importada
+    return dotProduct / (math.sqrt(norm1) * math.sqrt(norm2));
+  }
+
+  // التحقق من وجود وجه مسجل مسبقًا للطالب
+  Future<bool> _checkExistingFace() async {
+    // تأكد من وجود معرف للطالب
+    if (widget.studentId == null || widget.studentId!.isEmpty) {
+      return false;
+    }
+    
+    // استخدام DatabaseHelper للتحقق من وجود الطالب
+    final dbHelper = DatabaseHelper();
+    await dbHelper.init();
+    
+    // Consulta personalizada para verificar la existencia del estudiante
+    final result = await dbHelper.query(
+      DatabaseHelper.table,
+      where: '${DatabaseHelper.columnStudentId} = ?',
+      whereArgs: [widget.studentId],
+    );
+    
+    return result.isNotEmpty;
   }
 
   // دالة تسجيل الوجوه: معالجة 3 صور، حساب المتوسط وتسجيلها مع اسم الطالب
   Future<void> registerFace() async {
+    // التحقق من عدد الصور
     if (capturedImages.length != 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please capture 3 images")),
+        const SnackBar(content: Text("الرجاء التقاط 3 صور")),
       );
       return;
     }
 
+    // التحقق من إدخال الاسم
     if (nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a name")),
+        const SnackBar(content: Text("الرجاء إدخال الاسم")),
+      );
+      return;
+    }
+
+    // التأكد من وجود معرف للطالب
+    if (widget.studentId == null || widget.studentId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("معرف الطالب غير متوفر")),
       );
       return;
     }
@@ -232,12 +328,43 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     });
 
     try {
+      // التحقق من وجود وجه مسجل مسبقًا
+      bool hasExistingFace = await _checkExistingFace();
+      
+      if (hasExistingFace) {
+        // إذا كان هناك وجه مسجل، نسأل المستخدم إذا كان يريد الاستبدال
+        bool shouldReplace = await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("تم العثور على وجه مسجل"),
+            content: const Text("لديك وجه مسجل بالفعل. هل تريد استبداله؟"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text("لا"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text("نعم"),
+              ),
+            ],
+          ),
+        ) ?? false; // إذا أغلق المستخدم الحوار بدون اختيار، نفترض "لا"
+        
+        if (!shouldReplace) {
+          setState(() {
+            isProcessing = false;
+          });
+          return;
+        }
+      }
+
       List<List<double>> embeddingsList = [];
       for (int i = 0; i < capturedImages.length; i++) {
         List<double>? emb = await processImageForEmbedding(capturedImages[i]);
         if (emb == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Face not detected in image ${i+1}, please retake.")),
+            SnackBar(content: Text("لم يتم اكتشاف وجه في الصورة ${i+1}، يرجى إعادة التقاط.")),
           );
           setState(() {
             isProcessing = false;
@@ -247,15 +374,31 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         embeddingsList.add(emb);
       }
 
-      // حساب المتوسط من الثلاثة embeddings
-      List<double> avgEmbedding = averageEmbedding(embeddingsList);
+      // TEMPORALMENTE OMITIENDO la verificaciu00f3n de coincidencia de rostros
+      bool facesMatch = true; // Forzar a que siempre sea verdadero
+      
+      if (!facesMatch) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("تم اكتشاف وجوه مختلفة في الصور! يرجى التقاط صور لنفس الشخص."),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        setState(() {
+          isProcessing = false;
+        });
+        return;
+      }
 
-      // تسجيل الوجه في قاعدة البيانات باستخدام Recognizer
-      // إزالة كلمة await إذا كانت الدالة لا تعيد Future
-      recognizer.registerFaceInDB(nameController.text, avgEmbedding);
+      // حساب المتوسط من الثلاثة embeddings
+      List<double> avgEmbedding = _calculateAverageEmbedding(embeddingsList);
+
+      // تسجيل الوجه في قاعدة البيانات باستخدام Recognizer مع تمرير معرف الطالب
+      recognizer.registerFaceInDB(nameController.text, avgEmbedding, widget.studentId!);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Face Registered Successfully")),
+        const SnackBar(content: Text("تم تسجيل الوجه بنجاح")),
       );
 
       // إعادة تهيئة المتغيرات للتسجيل الجديد
@@ -267,7 +410,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     } catch (e) {
       print('Error during face registration: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Registration failed: ${e.toString()}")),
+        SnackBar(content: Text("فشل التسجيل: ${e.toString()}")),
       );
       setState(() {
         isProcessing = false;

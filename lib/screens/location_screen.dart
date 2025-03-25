@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../core/theming/colors.dart';
 import '../services/api_service.dart';
 
 class LocationScreen extends StatefulWidget {
@@ -122,20 +124,31 @@ class _LocationScreenState extends State<LocationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Verify Location'),
-        backgroundColor: Colors.blue.shade800,
+
+        leading: BackButton(
+            color: Colors.white
+        ),
+        title: const Text('Verify Location', style: TextStyle(
+          color: Colors.white
+        ),),
+        backgroundColor: ColorsManager.darkBlueColor1,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Image.asset('assets/images/location.jpg', height: 150,),
+            SizedBox(height: 35.h,),
             TextField(
+
               controller: _locationController,
               decoration: const InputDecoration(
                 labelText: 'Your Location',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(20)),),
               ),
               readOnly: true,
             ),
@@ -145,15 +158,16 @@ class _LocationScreenState extends State<LocationScreen> {
               child: ElevatedButton(
                 onPressed: _isVerifying ? null : _verifyLocation,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade800,
+                  backgroundColor: ColorsManager.darkBlueColor1,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 child: _isVerifying
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
                         'Verify Location',
-                        style: TextStyle(fontSize: 16),
-                      ),
+                        style: TextStyle(fontSize: 16, color: Colors.white),
+
+                ),
               ),
             ),
           ],

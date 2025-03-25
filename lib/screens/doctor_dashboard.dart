@@ -1,4 +1,7 @@
+import 'package:attend_me_locate/core/theming/colors.dart';
+import 'package:attend_me_locate/core/theming/font_weight_helpers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/course_service.dart';
 import 'attendance_details_screen.dart';
@@ -106,8 +109,13 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
+                style: ButtonStyle(
+                  backgroundColor: MaterialStateProperty.all(ColorsManager.darkBlueColor1),
+                ),
                 onPressed: _determinePosition,
-                child: const Text('Get Current Location'),
+                child: const Text('Get Current Location',style: TextStyle(
+                  color: Colors.white
+                ),),
               ),
             ],
           ),
@@ -115,7 +123,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel',style: TextStyle(
+              color: ColorsManager.darkBlueColor1,
+              fontSize: 18
+            ),),
           ),
           TextButton(
             onPressed: () async {
@@ -165,7 +176,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                 });
               }
             },
-            child: const Text('Add'),
+            child: const Text('Add',style: TextStyle(
+                color: ColorsManager.darkBlueColor1,
+              fontSize: 18
+            ),),
           ),
         ],
       ),
@@ -206,11 +220,13 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Doctor Dashboard'),
-        backgroundColor: Colors.blue,
+        title: Center(child: const Text('Doctor Dashboard', style: TextStyle(
+          color: Colors.white
+        ),)),
+        backgroundColor: ColorsManager.darkBlueColor1,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: Colors.white,),
             onPressed: _loadCourses,
           ),
         ],
@@ -243,6 +259,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                         }
                       },
                       child: Card(
+                        color: ColorsManager.blueColor,
                         margin: const EdgeInsets.only(bottom: 16),
                         elevation: 2,
                         child: Padding(
@@ -252,19 +269,37 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                             children: [
                               Text(course['name'] ?? 'Unknown Name',
                                   style: const TextStyle(
-                                      fontSize: 18,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.bold)),
-                              Text("Day: ${course['day'] ?? 'N/A'}"),
-                              Text("Time: ${course['time'] ?? 'N/A'}"),
-                              Text("Code: ${course['enrollment_code'] ?? 'N/A'}"),
-                              Text("${course['students'] ?? 0} students"),
-                              Text("Location: ${course['location'] ?? 'N/A'}"),
+                              Text("Day: ${course['day'] ?? 'N/A'}",style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500
+                              ),),
+                              Text("Time: ${course['time'] ?? 'N/A'}",style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500
+                              ),),
+                              Text("Code: ${course['enrollment_code'] ?? 'N/A'}",style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500
+                              ),),
+                              Text("${course['students'] ?? 0} students",style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500
+                              ),),
+                              Text("Location: ${course['location'] ?? 'N/A'}",style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500
+                              ),),
                               const SizedBox(height: 16),
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Attendance Registration'),
+                                  const Text('Attendance Registration',style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500
+                              ),),
                                   Switch(
                                     value: course['isAttendanceOpen'] ?? false,
                                     onChanged: (value) async {
@@ -299,18 +334,21 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                                       }
                                     },
                                   ),
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => AttendanceDetailsScreen(courseId: course['id']),
-                                        ),
-                                      );
-                                    },
-                                    child: const Text('View Attendance'),
-                                  ),
                                 ],
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => AttendanceDetailsScreen(courseId: course['id']),
+                                    ),
+                                  );
+                                },
+                                child: const Text('View Attendance',style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500
+                                ),),
                               ),
                             ],
                           ),
@@ -321,7 +359,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                 ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addCourse,
-        backgroundColor: Colors.blue,
+        backgroundColor: ColorsManager.darkBlueColor1,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );

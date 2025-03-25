@@ -42,8 +42,8 @@ class TextStyles {
     color: ColorsManager.greyColor,
   );
 
-  static TextStyle font28DarkBlueMedium = TextStyle(
-    fontSize: 28,
+  static TextStyle font24DarkBlueMedium = TextStyle(
+    fontSize: 24,
     fontWeight: FontWeightHelper.medium,
     color: ColorsManager.darkBlueColor1,
   );

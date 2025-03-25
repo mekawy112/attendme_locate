@@ -134,7 +134,27 @@ class StudentLocation(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.now)
+
+# نموذج بيانات الحضور
+class Attendance(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    date = db.Column(db.Date, default=datetime.datetime.now().date())
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.now())
+    face_verified = db.Column(db.Boolean, default=False)
+    location_verified = db.Column(db.Boolean, default=False)
+    
+    # العلاقات
+    student = db.relationship('User', backref='attendances')
+    course = db.relationship('Course', backref='attendances')
+
+# نموذج بيانات التعرف على الوجه
+class FaceRecognition(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.now())
 
 # الراوترز
 @app.route('/', methods=['GET'])
@@ -590,26 +610,26 @@ def get_student_courses(student_id):
 @app.route('/courses/<int:course_id>/students', methods=['GET'])
 def get_course_students(course_id):
     try:
-        # Verify course existence
+        # التحقق من وجود المقرر
         course = Course.query.get(course_id)
         if not course:
             return jsonify({
                 'success': False,
                 'message': 'Course not found'
             }), 404
-
-        # Get enrolled students
+        
+        # الحصول على معرفات الطلاب المسجلين في المقرر
         enrollments = StudentCourse.query.filter_by(course_id=course_id).all()
         student_ids = [enrollment.student_id for enrollment in enrollments]
-
-        # Get student details
+        
+        # الحصول على تفاصيل الطلاب
         students = User.query.filter(User.id.in_(student_ids)).all()
-
+        
         return jsonify({
             'success': True,
             'students': [student.to_dict() for student in students]
         }), 200
-
+        
     except Exception as e:
         logger.error(f"Error in get_course_students: {e}")
         return jsonify({
@@ -920,25 +940,299 @@ def verify_location():
 
 @app.route('/attendance/verify', methods=['POST'])
 def verify_attendance():
-    data = request.get_json()
-    student_id = data.get('student_id')
-    course_id = data.get('course_id')
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        course_id = data.get('course_id')
+        
+        # تحقق من وجود السجلات
+        if not student_id or not course_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing student_id or course_id'
+            }), 400
+        
+        # استخراج حالة التحقق من الوجه من البيانات المرسلة
+        face_verified = data.get('face_verified', False)
+        
+        # استخراج حالة التحقق من الموقع من البيانات المرسلة
+        location_verified = data.get('location_verified', False)
+        
+        # التحقق من أن كلا الشرطين قد تم تحقيقهما
+        if not face_verified or not location_verified:
+            return jsonify({
+                'success': False,
+                'message': 'يجب التحقق من الوجه والموقع معًا لتسجيل الحضور'
+            }), 400
+        
+        # تحقق من حالة التعرف على الوجه في قاعدة البيانات
+        face_record = FaceRecognition.query.filter_by(
+            student_id=student_id
+        ).order_by(FaceRecognition.timestamp.desc()).first()
+        
+        if not face_record:
+            return jsonify({
+                'success': False,
+                'message': 'Face verification not found in database'
+            }), 400
+        
+        # تحقق إذا كان التعرف على الوجه تم في آخر 15 دقيقة
+        now = datetime.datetime.now()
+        face_time_diff = (now - face_record.timestamp).total_seconds()
+        if face_time_diff > 15 * 60:  # 15 دقيقة
+            return jsonify({
+                'success': False,
+                'message': 'Face verification expired, please verify again'
+            }), 400
+        
+        # تحقق من حالة التحقق من الموقع في قاعدة البيانات للتأكد
+        location_record = StudentLocation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).order_by(StudentLocation.timestamp.desc()).first()
+        
+        if not location_record:
+            return jsonify({
+                'success': False,
+                'message': 'Location verification not found in database'
+            }), 400
+        
+        # تحقق إذا كان التحقق من الموقع تم في آخر 15 دقيقة
+        location_time_diff = (now - location_record.timestamp).total_seconds()
+        if location_time_diff > 15 * 60:  # 15 دقيقة
+            return jsonify({
+                'success': False,
+                'message': 'Location verification expired, please verify again'
+            }), 400
+        
+        # تسجيل محاولة التحقق في السجلات
+        app.logger.info(f"Attendance verification: student_id={student_id}, course_id={course_id}, face={face_verified}, location={location_verified}")
+        
+        # إذا تحققت جميع الشروط، سجل الحضور
+        attendance = Attendance(
+            student_id=student_id,
+            course_id=course_id,
+            face_verified=face_verified,
+            location_verified=location_verified,
+            timestamp=now
+        )
+        db.session.add(attendance)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Attendance verified successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error verifying attendance: {e}")
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
 
-    # Check if attendance already recorded for today
-    today = datetime.datetime.utcnow().date()
-    existing_attendance = StudentLocation.query.filter(
-        StudentLocation.student_id == student_id,
-        StudentLocation.course_id == course_id,
-        db.func.date(StudentLocation.timestamp) == today
-    ).first()
+@app.route('/attendance/confirm', methods=['POST'])
+def confirm_attendance():
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        course_id = data.get('course_id')
+        
+        # تحقق من وجود السجلات
+        if not student_id or not course_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing student_id or course_id'
+            }), 400
+        
+        # البحث عن سجل التحقق من الوجه حسب معرف الطالب
+        face_record = FaceRecognition.query.filter_by(
+            student_id=student_id
+        ).order_by(FaceRecognition.timestamp.desc()).first()
+        
+        if not face_record:
+            return jsonify({
+                'success': False,
+                'message': 'Face verification not found in database'
+            }), 400
+        
+        # التحقق من أن التحقق من الوجه كان في آخر 15 دقيقة
+        now = datetime.datetime.now()
+        face_time_diff = (now - face_record.timestamp).total_seconds()
+        if face_time_diff > 15 * 60:  # 15 دقيقة
+            return jsonify({
+                'success': False,
+                'message': 'Face verification expired, please verify again'
+            }), 400
+        
+        # البحث عن سجل التحقق من الموقع حسب معرف الطالب ومعرف المقرر
+        location_record = StudentLocation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).order_by(StudentLocation.timestamp.desc()).first()
+        
+        if not location_record:
+            return jsonify({
+                'success': False,
+                'message': 'Location verification not found in database'
+            }), 400
+        
+        # التحقق من أن التحقق من الموقع كان في آخر 15 دقيقة
+        location_time_diff = (now - location_record.timestamp).total_seconds()
+        if location_time_diff > 15 * 60:  # 15 دقيقة
+            return jsonify({
+                'success': False,
+                'message': 'Location verification expired, please verify again'
+            }), 400
+        
+        # إذا تحققت جميع الشروط، سجل الحضور
+        attendance = Attendance(
+            student_id=student_id,
+            course_id=course_id,
+            face_verified=True,
+            location_verified=True,
+            timestamp=now
+        )
+        db.session.add(attendance)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Attendance confirmed successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error confirming attendance: {e}")
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
 
-    if existing_attendance:
-        return jsonify({'success': False, 'message': 'Attendance already recorded for today'})
+@app.route('/attendance/send-to-doctor', methods=['POST'])
+def send_attendance_to_doctor():
+    try:
+        data = request.get_json()
+        course_id = data.get('course_id')
+        date_str = data.get('date')  # اختياري، يمكن استخدامه لاسترجاع الحضور ليوم معين
+        
+        if not course_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing course_id'
+            }), 400
+        
+        # تهيئة استعلام قاعدة البيانات
+        query = db.session.query(
+            Attendance, User.name.label('student_name')
+        ).join(
+            User, Attendance.student_id == User.id
+        ).filter(
+            Attendance.course_id == course_id,
+            Attendance.face_verified == True,
+            Attendance.location_verified == True
+        )
+        
+        # إذا تم تحديد تاريخ، قم بتصفية النتائج حسب التاريخ
+        if date_str:
+            try:
+                filter_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                query = query.filter(Attendance.date == filter_date)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid date format, use YYYY-MM-DD'
+                }), 400
+        
+        # الحصول على النتائج
+        attendances = query.all()
+        
+        # تنسيق البيانات للإرجاع
+        attendance_records = []
+        for attendance, student_name in attendances:
+            attendance_records.append({
+                'student_id': attendance.student_id,
+                'student_name': student_name,
+                'date': attendance.date.strftime("%Y-%m-%d"),
+                'timestamp': attendance.timestamp.strftime("%H:%M:%S")
+            })
+        
+        # ارجع البيانات للدكتور
+        return jsonify({
+            'success': True,
+            'course_id': course_id,
+            'attendance_records': attendance_records
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error sending attendance to doctor: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
 
-    # Verify GPS and face recognition
-    # Add your logic here...
-
-    return jsonify({'success': True, 'message': 'Attendance verified successfully'})
+# واجهة API جديدة للدكتور لعرض سجلات الحضور
+@app.route('/doctor/course-attendance', methods=['GET'])
+def get_course_attendance():
+    try:
+        course_id = request.args.get('course_id')
+        date_str = request.args.get('date')  # اختياري
+        
+        if not course_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing course_id parameter'
+            }), 400
+        
+        # تهيئة استعلام قاعدة البيانات
+        query = db.session.query(
+            Attendance, User.name.label('student_name')
+        ).join(
+            User, Attendance.student_id == User.id
+        ).filter(
+            Attendance.course_id == course_id,
+            Attendance.face_verified == True,
+            Attendance.location_verified == True
+        )
+        
+        # إذا تم تحديد تاريخ، قم بتصفية النتائج حسب التاريخ
+        if date_str:
+            try:
+                filter_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                query = query.filter(Attendance.date == filter_date)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid date format, use YYYY-MM-DD'
+                }), 400
+        
+        # الحصول على النتائج
+        attendances = query.all()
+        
+        # تنسيق البيانات للإرجاع
+        attendance_records = []
+        for attendance, student_name in attendances:
+            attendance_records.append({
+                'student_id': attendance.student_id,
+                'student_name': student_name,
+                'date': attendance.date.strftime("%Y-%m-%d"),
+                'timestamp': attendance.timestamp.strftime("%H:%M:%S")
+            })
+        
+        # ارجع البيانات للدكتور
+        return jsonify({
+            'success': True,
+            'course_id': course_id,
+            'attendance_records': attendance_records
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting course attendance: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
 
 @app.route('/face/check-registration/<int:student_id>', methods=['GET'])
 def check_face_registration(student_id):
@@ -950,28 +1244,6 @@ def check_face_registration(student_id):
         return jsonify({'isRegistered': True})
     else:
         return jsonify({'isRegistered': False})
-
-@app.route('/attendance/send-to-doctor', methods=['POST'])
-def send_attendance_to_doctor():
-    data = request.get_json()
-    course_id = data.get('course_id')
-
-    # Fetch attendance data and send to the doctor
-    # Add your logic here...
-
-    return jsonify({'success': True, 'message': 'Attendance sent to the doctor'})
-
-@app.route('/attendance/confirm', methods=['POST'])
-def confirm_attendance():
-    data = request.get_json()
-    student_id = data.get('student_id')
-    student_name = data.get('student_name')
-    course_id = data.get('course_id')
-
-    # Logic to confirm attendance and notify the doctor
-    # Ensure the attendance is recorded and the doctor is notified
-
-    return jsonify({'success': True, 'message': 'Attendance confirmed and sent to the doctor'})
 
 def cleanup_database():
     try:
@@ -991,6 +1263,43 @@ def kill_database_connections():
     except Exception as e:
         logger.error(f"Error killing database connections: {e}")
 
+# إضافة مسار جديد للتحقق من الوجه
+@app.route('/attendance/verify-face', methods=['POST'])
+def verify_face():
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        
+        # تحقق من وجود معرف الطالب
+        if not student_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing student_id'
+            }), 400
+        
+        # تسجيل التحقق من الوجه في قاعدة البيانات
+        face_recognition = FaceRecognition(
+            student_id=student_id,
+            timestamp=datetime.datetime.now()
+        )
+        db.session.add(face_recognition)
+        db.session.commit()
+        
+        logger.info(f"Face verification recorded for student_id={student_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Face verification recorded successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error recording face verification: {e}")
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
+
 if __name__ == '__main__':
     try:
         # Kill existing connections first
@@ -1007,3 +1316,94 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"Application error: {e}")
         raise
+
+@app.route('/attendance/send-to-doctor', methods=['POST'])
+def send_attendance_to_doctor():
+    try:
+        data = request.get_json()
+        course_id = data.get('course_id')
+        
+        # التحقق من البيانات المطلوبة
+        if not course_id:
+            return jsonify({'success': False, 'message': 'Missing course_id'}), 400
+        
+        # الحصول على المقرر وبيانات الحضور
+        course = Course.query.get(course_id)
+        if not course:
+            return jsonify({'success': False, 'message': 'Course not found'}), 404
+        
+        # الحصول على سجلات الحضور لهذا المقرر
+        attendance_records = Attendance.query.filter_by(
+            course_id=course_id,
+            face_verified=True,
+            location_verified=True
+        ).all()
+        
+        # تحويل البيانات إلى تنسيق JSON
+        attendance_data = []
+        for record in attendance_records:
+            student = User.query.get(record.student_id)
+            if student:
+                attendance_data.append({
+                    'student_id': student.id,
+                    'student_name': student.name,
+                    'timestamp': record.timestamp.isoformat(),
+                    'date': record.date.isoformat(),
+                })
+        
+        # في الواقع، هنا يمكن إرسال البيانات إلى الطبيب بطريقة أخرى
+        # مثلا: عبر البريد الإلكتروني، أو حفظها في ملف، إلخ...
+        
+        return jsonify({
+            'success': True,
+            'message': 'Attendance records sent to doctor',
+            'data': attendance_data
+        })
+    
+    except Exception as e:
+        app.logger.error(f"Error sending attendance to doctor: {e}")
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@app.route('/attendance/course/<int:course_id>/date/<date>', methods=['GET'])
+def get_course_attendance_by_date(course_id, date):
+    try:
+        # التحقق من وجود المقرر
+        course = Course.query.get(course_id)
+        if not course:
+            return jsonify({'success': False, 'message': 'Course not found'}), 404
+        
+        # تحويل التاريخ إلى كائن date
+        try:
+            attendance_date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        
+        # الحصول على سجلات الحضور لهذا المقرر والتاريخ
+        attendance_records = Attendance.query.filter_by(
+            course_id=course_id,
+            date=attendance_date
+        ).all()
+        
+        # تحويل البيانات إلى تنسيق JSON
+        attendance_data = []
+        for record in attendance_records:
+            student = User.query.get(record.student_id)
+            if student:
+                attendance_data.append({
+                    'id': student.id,
+                    'name': student.name,
+                    'email': student.email,
+                    'timestamp': record.timestamp.isoformat(),
+                    'face_verified': record.face_verified,
+                    'location_verified': record.location_verified
+                })
+        
+        return jsonify({
+            'success': True,
+            'message': 'تم جلب سجلات الحضور بنجاح',
+            'attendance_records': attendance_data
+        })
+    
+    except Exception as e:
+        app.logger.error(f"Error getting attendance records by date: {e}")
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500

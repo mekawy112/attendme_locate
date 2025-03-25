@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theming/colors.dart';
 import 'attendance_options_screen.dart';
 
 class CourseDetailScreen extends StatelessWidget {
@@ -18,8 +19,11 @@ class CourseDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(course['name'] ?? 'Course Details'),
-        backgroundColor: Colors.blue.shade800,
+        leading: BackButton(
+            color: Colors.white
+        ),
+        title: Text(course['name'] ?? 'Course Details',style: TextStyle(color: Colors.white),),
+       backgroundColor: ColorsManager.darkBlueColor1,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -27,6 +31,7 @@ class CourseDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Card(
+              color: ColorsManager.blueColor,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -41,10 +46,22 @@ class CourseDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                        'Description: ${course['description'] ?? 'No description'}'),
-                    Text('Day: ${course['day'] ?? 'N/A'}'),
-                    Text('Time: ${course['time'] ?? 'N/A'}'),
-                    Text('Location: ${course['location'] ?? 'N/A'}'),
+                        'Description: ${course['description'] ?? 'No description'}',style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500
+                    ),),
+                    Text('Day: ${course['day'] ?? 'N/A'}',style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500
+                    ),),
+                    Text('Time: ${course['time'] ?? 'N/A'}',style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500
+                    ),),
+                    Text('Location: ${course['location'] ?? 'N/A'}',style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500
+                    ),),
                     const SizedBox(height: 16),
 
                     // Show attendance button only for students when attendance is open
@@ -65,7 +82,7 @@ class CourseDetailScreen extends StatelessWidget {
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: ColorsManager.darkBlueColor1,
                             padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                           child: const Text(
@@ -83,12 +100,13 @@ class CourseDetailScreen extends StatelessWidget {
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
-                        color: Colors.red.shade100,
+                        color: Colors.red.shade400,
                         child: const Text(
                           'Attendance is currently closed',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.red,
+                          fontSize: 16,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
                         ),

@@ -213,16 +213,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             course['name'],
                             style: TextStyle(
                               fontSize: 18.sp,
-                              color: Colors.white,
+                              color: ColorsManager.darkBlueColor1,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          SizedBox(height: 10.h),
+                          SizedBox(height: 5.h),
                           Text(
                             course['code'],
                             style: TextStyle(
                               fontSize: 16.sp,
-                              color: Colors.white60,
+                              color: ColorsManager.darkBlueColor1,
                             ),
                           ),
                         ],
@@ -323,30 +323,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Icon(
               Icons.add,
-              color: ColorsManager.darkBlueColor1,
-              size: 35,
-            ),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton(
-            heroTag: "verifyAttendance",
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => AttendanceOptionsScreen(
-                    studentData: widget.userData,
-                    courseData: {}, // Pass course data here
-                  ),
-                ),
-              );
-            },
-            backgroundColor: ColorsManager.blueColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30.sp),
-            ),
-            child: Icon(
-              Icons.check,
               color: ColorsManager.darkBlueColor1,
               size: 35,
             ),
