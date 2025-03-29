@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
+  bool _isPasswordVisible = false;
 
   Future<void> _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
@@ -151,9 +152,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: 'Password',
                     hintText: 'Please enter your password',
                     controller: _passwordController,
+                    isObscureText: !_isPasswordVisible,
                     prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                    suffixIcon:
-                        const Icon(Icons.visibility, color: Colors.white),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
+                    ),
                   ),
 
                   const SizedBox(height: 10),

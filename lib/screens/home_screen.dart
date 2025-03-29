@@ -160,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            WelcomeText(),
+            WelcomeText(userData: widget.userData),
             SizedBox(
               height: 10.sp,
             ),
