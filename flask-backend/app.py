@@ -43,8 +43,9 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 def set_sqlite_pragma(dbapi_connection, connection_record):
     try:
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA busy_timeout = 60000")  # 60 second timeout
-        cursor.execute("PRAGMA synchronous = NORMAL")
+        cursor.execute("PRAGMA journal_mode=WAL")  # Use WAL mode for better concurrency
+        cursor.execute("PRAGMA synchronous=NORMAL")  # Slightly less durable but faster
+        cursor.execute("PRAGMA busy_timeout=5000")  # Wait up to 5 seconds when database is locked
         cursor.close()
     except Exception as e:
         logger.error(f"Error setting SQLite pragmas: {e}")
@@ -494,7 +495,7 @@ def delete_course(course_id):
 @app.route('/courses/enroll', methods=['POST'])
 def enroll_in_course():
     try:
-        data = request.json
+        data = request.get_json()
         student_id = data.get('student_id')  # Could be string or int
         enrollment_code = data.get('enrollment_code')  # Should be string
         
@@ -548,8 +549,23 @@ def enroll_in_course():
             course_id=course.id
         )
         
-        db.session.add(new_enrollment)
-        db.session.commit()
+        # Use a separate transaction with timeout
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                db.session.add(new_enrollment)
+                db.session.commit()
+                break
+            except Exception as e:
+                retry_count += 1
+                logger.warning(f"Retry {retry_count}/{max_retries} for enrollment: {e}")
+                db.session.rollback()
+                time.sleep(1)  # Wait before retrying
+                
+                if retry_count >= max_retries:
+                    raise
         
         return jsonify({
             'success': True,
@@ -1057,7 +1073,7 @@ def confirm_attendance():
                 'message': 'Face verification not found in database'
             }), 400
         
-        # التحقق من أن التحقق من الوجه كان في آخر 15 دقيقة
+        # التحقق من أن التعرف على الوجه كان في آخر 15 دقيقة
         now = datetime.datetime.now()
         face_time_diff = (now - face_record.timestamp).total_seconds()
         if face_time_diff > 15 * 60:  # 15 دقيقة
@@ -1115,7 +1131,7 @@ def send_attendance_to_doctor():
     try:
         data = request.get_json()
         course_id = data.get('course_id')
-        date_str = data.get('date')  # اختياري، يمكن استخدامه لاسترجاع الحضور ليوم معين
+        date_str = data.get('date')  # اختياري
         
         if not course_id:
             return jsonify({
@@ -1178,6 +1194,7 @@ def get_course_attendance():
     try:
         course_id = request.args.get('course_id')
         date_str = request.args.get('date')  # اختياري
+        student_id = request.args.get('student_id')  # معرف الطالب للبحث (اختياري)
         
         if not course_id:
             return jsonify({
@@ -1185,46 +1202,99 @@ def get_course_attendance():
                 'message': 'Missing course_id parameter'
             }), 400
         
-        # تهيئة استعلام قاعدة البيانات
-        query = db.session.query(
-            Attendance, User.name.label('student_name')
-        ).join(
-            User, Attendance.student_id == User.id
-        ).filter(
-            Attendance.course_id == course_id,
-            Attendance.face_verified == True,
-            Attendance.location_verified == True
-        )
+        # الحصول على المقرر
+        course = Course.query.get(course_id)
+        if not course:
+            return jsonify({
+                'success': False,
+                'message': 'Course not found'
+            }), 404
         
-        # إذا تم تحديد تاريخ، قم بتصفية النتائج حسب التاريخ
+        # تحديد التاريخ للتصفية
         if date_str:
             try:
                 filter_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-                query = query.filter(Attendance.date == filter_date)
             except ValueError:
                 return jsonify({
                     'success': False,
                     'message': 'Invalid date format, use YYYY-MM-DD'
                 }), 400
+        else:
+            filter_date = datetime.datetime.now().date()
         
-        # الحصول على النتائج
-        attendances = query.all()
+        # الحصول على جميع الطلاب المسجلين في المقرر
+        enrollments = StudentCourse.query.filter_by(course_id=course_id).all()
+        student_ids = [enrollment.student_id for enrollment in enrollments]
+        
+        # تصفية حسب الطالب إذا تم تحديد معرف طالب
+        if student_id:
+            try:
+                student_id_int = int(student_id)
+                # التحقق من أن الطالب مسجل في المقرر
+                if student_id_int in student_ids:
+                    student_ids = [student_id_int]
+                else:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Student not enrolled in this course'
+                    }), 404
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid student_id format'
+                }), 400
+        
+        # الحصول على تفاصيل الطلاب
+        students = User.query.filter(User.id.in_(student_ids)).all()
+        
+        # الحصول على سجلات الحضور لليوم المحدد
+        attendance_records = Attendance.query.filter(
+            Attendance.course_id == course_id,
+            Attendance.date == filter_date,
+            Attendance.face_verified == True,
+            Attendance.location_verified == True
+        ).all()
+        
+        # إنشاء قاموس للطلاب الحاضرين لسهولة البحث
+        attended_students = {record.student_id: record for record in attendance_records}
         
         # تنسيق البيانات للإرجاع
-        attendance_records = []
-        for attendance, student_name in attendances:
-            attendance_records.append({
-                'student_id': attendance.student_id,
-                'student_name': student_name,
-                'date': attendance.date.strftime("%Y-%m-%d"),
-                'timestamp': attendance.timestamp.strftime("%H:%M:%S")
-            })
+        attendance_data = []
+        for student in students:
+            # التحقق مما إذا كان الطالب حاضراً
+            is_present = student.id in attended_students
+            attendance_record = attended_students.get(student.id)
+            
+            student_data = {
+                'student_id': student.id,
+                'student_number': student.student_id,  # رقم الطالب الدراسي
+                'student_name': student.name,
+                'is_present': is_present,
+                'attendance_date': filter_date.strftime("%Y-%m-%d"),
+            }
+            
+            # إضافة وقت التسجيل إذا كان الطالب حاضراً
+            if is_present and attendance_record:
+                student_data['attendance_time'] = attendance_record.timestamp.strftime("%H:%M:%S")
+            
+            attendance_data.append(student_data)
         
-        # ارجع البيانات للدكتور
+        # حساب إحصائيات الحضور
+        total_students = len(students)
+        present_students = len(attended_students)
+        absence_students = total_students - present_students
+        attendance_percentage = (present_students / total_students * 100) if total_students > 0 else 0
+        
         return jsonify({
             'success': True,
             'course_id': course_id,
-            'attendance_records': attendance_records
+            'course_name': course.name,
+            'date': filter_date.strftime("%Y-%m-%d"),
+            'total_students': total_students,
+            'present_students': present_students,
+            'absence_students': absence_students,
+            'attendance_percentage': round(attendance_percentage, 2),
+            'students': attendance_data
         }), 200
         
     except Exception as e:
@@ -1259,7 +1329,8 @@ def kill_database_connections():
         with app.app_context():
             db.session.remove()
             db.engine.dispose()
-        time.sleep(1)  # Give connections time to close
+            # Add a short sleep to ensure connections are properly closed
+            time.sleep(1.5)  # Increase timeout to give more time for connections to close
     except Exception as e:
         logger.error(f"Error killing database connections: {e}")
 
@@ -1300,69 +1371,48 @@ def verify_face():
             'message': f'Server error: {str(e)}'
         }), 500
 
-if __name__ == '__main__':
+# واجهة جديدة للحصول على تواريخ الحضور المسجلة للمقرر
+@app.route('/doctor/course-attendance/dates', methods=['GET'])
+def get_course_attendance_dates():
     try:
-        # Kill existing connections first
-        kill_database_connections()
+        course_id = request.args.get('course_id')
         
-        # Initialize database (only creates tables if they don't exist)
-        with app.app_context():
-            db.create_all()
-            logger.info("Database initialized successfully")
-
-        # Run the application
-        app.run(host='0.0.0.0', debug=True, port=5000)
-
-    except Exception as e:
-        logger.error(f"Application error: {e}")
-        raise
-
-@app.route('/attendance/send-to-doctor', methods=['POST'])
-def send_attendance_to_doctor():
-    try:
-        data = request.get_json()
-        course_id = data.get('course_id')
-        
-        # التحقق من البيانات المطلوبة
         if not course_id:
-            return jsonify({'success': False, 'message': 'Missing course_id'}), 400
+            return jsonify({
+                'success': False,
+                'message': 'Missing course_id parameter'
+            }), 400
         
-        # الحصول على المقرر وبيانات الحضور
+        # التحقق من وجود المقرر
         course = Course.query.get(course_id)
         if not course:
-            return jsonify({'success': False, 'message': 'Course not found'}), 404
+            return jsonify({
+                'success': False,
+                'message': 'Course not found'
+            }), 404
         
-        # الحصول على سجلات الحضور لهذا المقرر
-        attendance_records = Attendance.query.filter_by(
-            course_id=course_id,
-            face_verified=True,
-            location_verified=True
-        ).all()
+        # الحصول على التواريخ الفريدة لسجلات الحضور للمقرر
+        dates = db.session.query(Attendance.date)\
+            .filter(Attendance.course_id == course_id)\
+            .distinct()\
+            .all()
         
-        # تحويل البيانات إلى تنسيق JSON
-        attendance_data = []
-        for record in attendance_records:
-            student = User.query.get(record.student_id)
-            if student:
-                attendance_data.append({
-                    'student_id': student.id,
-                    'student_name': student.name,
-                    'timestamp': record.timestamp.isoformat(),
-                    'date': record.date.isoformat(),
-                })
-        
-        # في الواقع، هنا يمكن إرسال البيانات إلى الطبيب بطريقة أخرى
-        # مثلا: عبر البريد الإلكتروني، أو حفظها في ملف، إلخ...
+        # تنسيق التواريخ كقائمة سلاسل نصية
+        date_strings = [date[0].strftime("%Y-%m-%d") for date in dates]
         
         return jsonify({
             'success': True,
-            'message': 'Attendance records sent to doctor',
-            'data': attendance_data
-        })
-    
+            'course_id': course_id,
+            'course_name': course.name,
+            'dates': date_strings
+        }), 200
+        
     except Exception as e:
-        app.logger.error(f"Error sending attendance to doctor: {e}")
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+        logger.error(f"Error getting course attendance dates: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
 
 @app.route('/attendance/course/<int:course_id>/date/<date>', methods=['GET'])
 def get_course_attendance_by_date(course_id, date):
@@ -1407,3 +1457,35 @@ def get_course_attendance_by_date(course_id, date):
     except Exception as e:
         app.logger.error(f"Error getting attendance records by date: {e}")
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+if __name__ == '__main__':
+    try:
+        # Kill existing connections first
+        kill_database_connections()
+        
+        # Initialize database (only creates tables if they don't exist)
+        with app.app_context():
+            db.create_all()
+            logger.info("Database initialized successfully")
+
+        # Add periodic cleanup to prevent database locking
+        def cleanup_app():
+            with app.app_context():
+                try:
+                    db.session.remove()
+                    db.engine.dispose()
+                except Exception as e:
+                    logger.error(f"Error in periodic cleanup: {e}")
+
+        # Run the application with periodic cleanup
+        from apscheduler.schedulers.background import BackgroundScheduler
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(func=cleanup_app, trigger="interval", seconds=60)
+        scheduler.start()
+        
+        # Run the application
+        app.run(host='0.0.0.0', debug=True, port=5000, threaded=True)
+
+    except Exception as e:
+        logger.error(f"Application error: {e}")
+        raise

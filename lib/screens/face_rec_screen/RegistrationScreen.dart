@@ -2,11 +2,15 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:math' as math; 
+import 'package:attend_me_locate/widgets/app_text_form_field.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 
+import '../../core/theming/colors.dart';
 import 'ML/Recognition.dart';
 import 'ML/Recognizer.dart';
 import 'DB/DatabaseHelper.dart'; 
@@ -422,12 +426,28 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
-      appBar: AppBar(title: const Text("Face Registration")),
+      appBar: AppBar(title: const Text("Face Registration",style: TextStyle(
+        fontSize: 20,
+        color: Colors.white
+      ),), backgroundColor: ColorsManager.darkBlueColor1,
+      leading: BackButton(
+        color: Colors.white,
+      ),),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
+              SizedBox(
+                height: 20.sp,
+              ),
+              Text('Tap and take 3 photos of yours face',style: TextStyle(
+                fontSize: 20.sp,
+                fontWeight: FontWeight.bold,
+                color: ColorsManager.darkBlueColor1
+
+              ),),
+              SizedBox(height: 15.sp,),
               // عرض الصور الملتقطة كتصغير (thumbnails)
               if (capturedImages.isNotEmpty)
                 SizedBox(
@@ -457,7 +477,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                   });
                                 },
                                 child: Container(
-                                  color: Colors.red,
+                                  color: ColorsManager.blueColor,
                                   child: const Icon(
                                     Icons.close,
                                     color: Colors.white,
@@ -477,16 +497,44 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: capturedImages.length < 3 ? _pickImageFromCamera : null,
-                    icon: const Icon(Icons.camera),
-                    label: const Text("Camera"),
+                  GestureDetector(
+                    child: Container(
+                      margin: EdgeInsets.only(left: 15.w, bottom: 10.h, top: 10.h),
+                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: ColorsManager.darkBlueColor1,
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                            offset: Offset(2, 2),
+                          ),
+                          BoxShadow(
+                            color: Colors.blue,
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                            offset: Offset(-2, -2),
+                          )
+                        ],
+                      ),
+                      child: SvgPicture.asset(
+                        'assets/svgs/logo.svg',
+                      ),
+                    ),
+                    onTap: capturedImages.length < 3 ? _pickImageFromCamera : null,
                   ),
-                  ElevatedButton.icon(
-                    onPressed: capturedImages.length < 3 ? _pickImageFromGallery : null,
-                    icon: const Icon(Icons.photo),
-                    label: const Text("Gallery"),
-                  ),
+                  // ElevatedButton.icon(
+                  //   onPressed: capturedImages.length < 3 ? _pickImageFromCamera : null,
+                  //   icon: const Icon(Icons.camera),
+                  //   label: const Text("Camera"),
+                  // ),
+                  // ElevatedButton.icon(
+                  //   onPressed: capturedImages.length < 3 ? _pickImageFromGallery : null,
+                  //   icon: const Icon(Icons.photo),
+                  //   label: const Text("Gallery"),
+                  // ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -494,19 +542,27 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               if (capturedImages.length == 3)
                 Column(
                   children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: "Enter Student Name",
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
+                    AppTextFormField(label: 'Full Name',controller: nameController,
+                    hintText: 'Enter your name',),
+                    // TextField(
+                    //   controller: nameController,
+                    //   decoration: const InputDecoration(
+                    //     labelText: "Enter Student Name",
+                    //     border: OutlineInputBorder(),
+                    //   ),
+                    // ),
                     const SizedBox(height: 20),
                     isProcessing
                         ? const CircularProgressIndicator()
                         : ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ColorsManager.darkBlueColor1
+                      ),
                       onPressed: registerFace,
-                      child: const Text("Register Face"),
+                      child: const Text("Register Face", style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white
+                      ),),
                     ),
                   ],
                 ),

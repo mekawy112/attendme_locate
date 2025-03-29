@@ -16,7 +16,7 @@ class AppTextFormField extends StatelessWidget {
   final Widget? suffixIcon;
   final Color? backgroundColor;
   final TextEditingController? controller;
-  final String label;
+  final String? label;
   // final Function(String?) validator;
   final Color? cursorColor;
   final TextInputType? keyboardType;
@@ -36,7 +36,7 @@ class AppTextFormField extends StatelessWidget {
     this.backgroundColor,
     this.controller,
     //required this.validator,
-    required this.label,
+     this.label,
     this.cursorColor,
     this.keyboardType,
     this.prefixIcon,
@@ -54,7 +54,7 @@ class AppTextFormField extends StatelessWidget {
         prefixIcon: prefixIcon,
         prefixIconColor: ColorsManager.darkBlueColor1,
         labelText: label,
-        labelStyle: TextStyles.font14BlackMedium.copyWith(color: Colors.grey),
+        labelStyle: TextStyles.font18DarkBlueRegular.copyWith(color: ColorsManager.darkBlueColor1),
         isDense: true,
         alignLabelWithHint: false,
         contentPadding: contentPadding ??
@@ -92,7 +92,7 @@ class AppTextFormField extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         hintStyle: hintStyle ??
-            TextStyles.font14WhiteRegular
+            TextStyles.font14BlackMedium
                 .copyWith(fontWeight: FontWeightHelper.medium),
         hintText: hintText,
         suffixIcon: suffixIcon,

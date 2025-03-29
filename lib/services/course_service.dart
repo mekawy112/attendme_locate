@@ -1,15 +1,12 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart'; // Add this import
+import 'api_service.dart';
 
 class CourseService {
   // Use the same baseUrl pattern as in AuthService
-  static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://192.168.1.68:5000';
-    }
-    return 'http://192.168.1.68:5000';
-  }
+  static String get baseUrl => ApiService.baseUrl;
 
   Future<Map<String, dynamic>> getDoctorCourses(dynamic doctorId) async {
     try {
@@ -198,10 +195,22 @@ class CourseService {
   Future<Map<String, dynamic>> updateAttendanceState(
       int courseId, bool isOpen) async {
     try {
+      Map<String, dynamic> requestBody = {'isAttendanceOpen': isOpen};
+      
+      if (isOpen) {
+        try {
+          final position = await Geolocator.getCurrentPosition();
+          requestBody['location'] = '${position.latitude},${position.longitude}';
+          print('Updating location to: ${position.latitude},${position.longitude}');
+        } catch (e) {
+          print('Error getting current location: $e');
+        }
+      }
+
       final response = await http.put(
         Uri.parse('$baseUrl/courses/$courseId/attendance'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'isAttendanceOpen': isOpen}),
+        body: jsonEncode(requestBody),
       );
 
       return jsonDecode(response.body);
@@ -209,6 +218,92 @@ class CourseService {
       return {
         'success': false,
         'message': 'Error updating attendance state: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> getAttendanceRecords(int courseId, {String? date}) async {
+    try {
+      // استخدام الواجهة الجديدة بطريقة GET بدلاً من POST
+      String url = '$baseUrl/doctor/course-attendance?course_id=$courseId';
+      
+      // إضافة التاريخ إذا كان محدداً
+      if (date != null && date.isNotEmpty) {
+        url += '&date=$date';
+      }
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'success': true,
+          'students': data['students'] ?? [], // قائمة الطلاب مع حالة الحضور
+          'date': data['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+          'total_students': data['total_students'] ?? 0,
+          'present_students': data['present_students'] ?? 0,
+          'absence_students': data['absence_students'] ?? 0,
+          'attendance_percentage': data['attendance_percentage'] ?? 0.0,
+          'course_name': data['course_name'] ?? "",
+        };
+      } else {
+        final errorMessage = jsonDecode(response.body)['message'] ?? 'Failed to fetch attendance records';
+        return {
+          'success': false,
+          'message': errorMessage,
+        };
+      }
+    } catch (e) {
+      print('Error fetching attendance records: $e');
+      return {
+        'success': false,
+        'message': 'Network error: $e',
+      };
+    }
+  }
+  
+  // إضافة وظيفة للبحث عن طالب محدد
+  Future<Map<String, dynamic>> searchStudentAttendance(int courseId, String studentId, {String? date}) async {
+    try {
+      String url = '$baseUrl/doctor/course-attendance?course_id=$courseId&student_id=$studentId';
+      
+      // إضافة التاريخ إذا كان محدداً
+      if (date != null && date.isNotEmpty) {
+        url += '&date=$date';
+      }
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'success': true,
+          'students': data['students'] ?? [],
+          'date': data['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+          'total_students': data['total_students'] ?? 0,
+          'present_students': data['present_students'] ?? 0,
+          'absence_students': data['absence_students'] ?? 0,
+          'attendance_percentage': data['attendance_percentage'] ?? 0.0,
+          'course_name': data['course_name'] ?? "",
+        };
+      } else {
+        final errorMessage = jsonDecode(response.body)['message'] ?? 'Failed to fetch student attendance';
+        return {
+          'success': false,
+          'message': errorMessage,
+        };
+      }
+    } catch (e) {
+      print('Error searching student attendance: $e');
+      return {
+        'success': false,
+        'message': 'Network error: $e',
       };
     }
   }

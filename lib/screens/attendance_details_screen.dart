@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
 import '../core/theming/colors.dart';
+import '../services/course_service.dart';
 
 class AttendanceDetailsScreen extends StatefulWidget {
   final int courseId;
+  final String courseName;
+  final String? date;
 
-  const AttendanceDetailsScreen({Key? key, required this.courseId}) : super(key: key);
+  const AttendanceDetailsScreen({
+    Key? key, 
+    required this.courseId,
+    this.courseName = "",
+    this.date,
+  }) : super(key: key);
 
   @override
   State<AttendanceDetailsScreen> createState() => _AttendanceDetailsScreenState();
@@ -19,16 +26,27 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   List<Map<String, dynamic>> _students = [];
-  List<String> _dates = [];
-  Map<String, Map<String, bool>> _attendanceData = {};
+  String _selectedDate = '';
+  double _attendancePercentage = 0;
+  int _totalStudents = 0;
+  int _presentStudents = 0;
+  int _absentStudents = 0;
   
-  // تخزين البيانات المجمعة
-  Map<int, Map<String, dynamic>> _consolidatedData = {};
+  final CourseService _courseService = CourseService();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   
   @override
   void initState() {
     super.initState();
+    _selectedDate = widget.date ?? DateTime.now().toString().split(' ')[0];
     _fetchAttendanceData();
+  }
+  
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchAttendanceData() async {
@@ -38,36 +56,24 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
     });
 
     try {
-      // جلب بيانات الطلاب المسجلين في المقرر
-      final studentsResponse = await http.get(
-        Uri.parse('http://192.168.1.68:5000/courses/${widget.courseId}/students'),
+      // استخدام الخدمة المحدثة لجلب بيانات الحضور
+      final response = await _courseService.getAttendanceRecords(
+        widget.courseId,
+        date: _selectedDate,
       );
 
-      if (studentsResponse.statusCode != 200) {
-        throw Exception('Failed to load students data');
+      if (response['success']) {
+        setState(() {
+          _students = List<Map<String, dynamic>>.from(response['students']);
+          _totalStudents = response['total_students'];
+          _presentStudents = response['present_students'];
+          _absentStudents = response['absence_students'];
+          _attendancePercentage = response['attendance_percentage'].toDouble();
+          _isLoading = false;
+        });
+      } else {
+        throw Exception(response['message']);
       }
-
-      final studentsData = jsonDecode(studentsResponse.body);
-      _students = List<Map<String, dynamic>>.from(studentsData['students']);
-
-      // جلب سجلات الحضور للمقرر
-      final attendanceResponse = await http.get(
-        Uri.parse('http://192.168.1.68:5000/courses/${widget.courseId}/attendance'),
-      );
-
-      if (attendanceResponse.statusCode != 200) {
-        throw Exception('Failed to load attendance data');
-      }
-
-      final attendanceData = jsonDecode(attendanceResponse.body);
-      List<dynamic> records = attendanceData['records'];
-
-      // معالجة التواريخ وبناء البيانات المطلوبة
-      _processAttendanceData(records);
-
-      setState(() {
-        _isLoading = false;
-      });
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -77,60 +83,58 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
     }
   }
 
-  void _processAttendanceData(List<dynamic> records) {
-    // استخراج التواريخ الفريدة
-    Set<String> uniqueDates = {};
-    Map<int, Map<String, dynamic>> studentData = {};
-
-    // تهيئة بيانات الطلاب
-    for (var student in _students) {
-      int studentId = student['id'];
-      studentData[studentId] = {
-        'name': student['name'],
-        'student_id': student['student_id'],
-        'attendance': <String, bool>{},
-      };
+  Future<void> _searchStudent() async {
+    if (_searchQuery.isEmpty) {
+      _fetchAttendanceData();
+      return;
     }
 
-    // تجميع بيانات الحضور حسب الطالب والتاريخ
-    for (var record in records) {
-      String date = record['date'];
-      uniqueDates.add(date);
-      
-      int studentId = record['student_id'];
-      
-      if (studentData.containsKey(studentId)) {
-        Map<String, dynamic> studentInfo = studentData[studentId]!;
-        Map<String, bool> attendance = studentInfo['attendance'] as Map<String, bool>;
-        attendance[date] = record['face_verified'] && record['location_verified'];
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+
+    try {
+      final response = await _courseService.searchStudentAttendance(
+        widget.courseId,
+        _searchQuery,
+        date: _selectedDate,
+      );
+
+      if (response['success']) {
+        setState(() {
+          _students = List<Map<String, dynamic>>.from(response['students']);
+          _totalStudents = response['total_students'];
+          _presentStudents = response['present_students'];
+          _absentStudents = response['absence_students'];
+          _attendancePercentage = response['attendance_percentage'].toDouble();
+          _isLoading = false;
+        });
+      } else {
+        throw Exception(response['message']);
       }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = e.toString();
+      });
     }
-
-    // تحويل التواريخ إلى قائمة مرتبة
-    _dates = uniqueDates.toList();
-    _dates.sort(); // ترتيب التواريخ تصاعدياً
-
-    // ضمان أن جميع الطلاب لديهم سجلات لكل التواريخ
-    for (var studentId in studentData.keys) {
-      Map<String, dynamic> studentInfo = studentData[studentId]!;
-      Map<String, bool> attendance = studentInfo['attendance'] as Map<String, bool>;
-      
-      for (var date in _dates) {
-        if (!attendance.containsKey(date)) {
-          attendance[date] = false;
-        }
-      }
-    }
-
-    _consolidatedData = studentData;
   }
 
-  String _formatDate(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('yyyy-MM-dd').format(date);
-    } catch (e) {
-      return dateStr;
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.parse(_selectedDate),
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now(),
+    );
+    
+    if (pickedDate != null) {
+      setState(() {
+        _selectedDate = pickedDate.toString().split(' ')[0];
+        _fetchAttendanceData();
+      });
     }
   }
 
@@ -138,99 +142,146 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(
-            color: Colors.white
+        leading: BackButton(color: Colors.white),
+        title: Text(
+          'حضور ${widget.courseName}',
+          style: const TextStyle(color: Colors.white),
         ),
-        title: const Text('Attendance Sheet',style: TextStyle(
-          color: Colors.white
-        ),),
         backgroundColor: ColorsManager.darkBlueColor1,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white,),
-            onPressed: _fetchAttendanceData,
+            icon: const Icon(Icons.calendar_today, color: Colors.white),
+            onPressed: () => _selectDate(context),
           ),
           IconButton(
-            icon: const Icon(Icons.save_alt, color: Colors.white,),
-            onPressed: () {
-              // يمكن إضافة تصدير البيانات لاحقاً
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Coming Soon ..')),
-              );
-            },
-            tooltip: 'Expert File',
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _fetchAttendanceData,
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _hasError
-              ? Center(child: Text('Oops! an error occurred: $_errorMessage'))
-              : _buildAttendanceTable(),
+              ? Center(child: Text('خطأ: $_errorMessage'))
+              : _buildAttendanceScreen(),
     );
   }
 
-  Widget _buildAttendanceTable() {
-    if (_consolidatedData.isEmpty) {
-      return const Center(child: Text('لا توجد بيانات حضور للعرض'));
+  Widget _buildAttendanceScreen() {
+    return Column(
+      children: [
+        // معلومات إحصائية
+        _buildAttendanceSummary(),
+        
+        // بحث عن طالب
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              labelText: 'بحث عن طالب بالرقم',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () {
+                  _searchQuery = _searchController.text.trim();
+                  _searchStudent();
+                },
+              ),
+            ),
+            onSubmitted: (value) {
+              _searchQuery = value.trim();
+              _searchStudent();
+            },
+          ),
+        ),
+        
+        // قائمة الطلاب
+        Expanded(child: _buildStudentsList()),
+      ],
+    );
+  }
+  
+  Widget _buildAttendanceSummary() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      margin: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildSummaryItem('التاريخ', _selectedDate),
+          _buildSummaryItem('إجمالي الطلاب', '$_totalStudents'),
+          _buildSummaryItem('الحضور', '$_presentStudents'),
+          _buildSummaryItem('الغياب', '$_absentStudents'),
+          _buildSummaryItem('نسبة الحضور', '${_attendancePercentage.toStringAsFixed(1)}%'),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildSummaryItem(String title, String value) {
+    return Column(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: title == 'الغياب' ? Colors.red : Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStudentsList() {
+    if (_students.isEmpty) {
+      return const Center(child: Text('لا توجد بيانات للعرض'));
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: MaterialStateProperty.all(Colors.blue.shade50),
-          border: TableBorder.all(color: Colors.grey.shade300),
-          columns: [
-            const DataColumn(label: Text('الاسم', style: TextStyle(fontWeight: FontWeight.bold))),
-            const DataColumn(label: Text('الرقم', style: TextStyle(fontWeight: FontWeight.bold))),
-            ..._dates.map((date) => DataColumn(
-                  label: Text(
-                    _formatDate(date),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                )),
-            const DataColumn(label: Text('نسبة الحضور', style: TextStyle(fontWeight: FontWeight.bold))),
-          ],
-          rows: _consolidatedData.values.map((studentInfo) {
-            // حساب نسبة الحضور
-            int attendedCount = 0;
-            Map<String, bool> attendance = studentInfo['attendance'] as Map<String, bool>;
-            
-            for (var isPresent in attendance.values) {
-              if (isPresent) attendedCount++;
-            }
-            
-            double attendanceRate = attendance.isEmpty ? 0 : attendedCount / attendance.length * 100;
-            
-            return DataRow(
-              cells: [
-                DataCell(Text(studentInfo['name'] ?? 'غير معروف')),
-                DataCell(Text(studentInfo['student_id'] ?? 'غير معروف')),
-                ..._dates.map((date) {
-                  bool isPresent = attendance[date] ?? false;
-                  return DataCell(
-                    Container(
-                      color: isPresent ? Colors.green.shade100 : Colors.red.shade100,
-                      width: 40,
-                      height: 40,
-                      child: Center(
-                        child: Icon(
-                          isPresent ? Icons.check_circle : Icons.cancel,
-                          color: isPresent ? Colors.green : Colors.red,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-                DataCell(Text('${attendanceRate.toStringAsFixed(1)}%')),
-              ],
-            );
-          }).toList(),
-        ),
-      ),
+    return ListView.builder(
+      itemCount: _students.length,
+      itemBuilder: (context, index) {
+        final student = _students[index];
+        final bool isPresent = student['is_present'] ?? false;
+        
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: isPresent ? Colors.green : Colors.red,
+              child: Icon(
+                isPresent ? Icons.check : Icons.close,
+                color: Colors.white,
+              ),
+            ),
+            title: Text(
+              student['student_name'] ?? 'غير معروف',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text('رقم الطالب: ${student['student_number'] ?? 'غير متوفر'}'),
+            trailing: Text(
+              isPresent ? 'حاضر' : 'غائب',
+              style: TextStyle(
+                color: isPresent ? Colors.green : Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

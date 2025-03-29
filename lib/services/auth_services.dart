@@ -3,17 +3,11 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart';
 
 class AuthService {
   // Base URL configuration
-  static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://192.168.1.68:5000';
-    }
-    return kDebugMode
-        ? 'http://192.168.1.68:5000' // Android emulator
-        : 'http://192.168.1.68:5000'; // Production
-  }
+  static String get baseUrl => ApiService.baseUrl;
 
   // Login method
   Future<Map<String, dynamic>> login(String email, String password) async {

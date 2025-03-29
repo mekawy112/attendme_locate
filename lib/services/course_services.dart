@@ -1,15 +1,11 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'api_service.dart';
 
 class CourseService {
   // Use the same baseUrl pattern as in AuthService
-  static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://192.168.1.68:5000';
-    }
-    return 'http://192.168.1.68:5000';
-  }
+  static String get baseUrl => ApiService.baseUrl;
 
   Future<Map<String, dynamic>> getDoctorCourses(dynamic doctorId) async {
     try {

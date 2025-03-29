@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/course_service.dart';
+import 'attendance_days_screen.dart';
 import 'attendance_details_screen.dart';
 import 'course_detail_screen.dart'; // Import the CourseDetailScreen
 
@@ -341,7 +342,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => AttendanceDetailsScreen(courseId: course['id']),
+                                      builder: (context) => AttendanceDaysScreen(
+                                        courseId: course['id'],
+                                        courseName: course['name'] ?? 'Unknown Course',
+                                      ),
                                     ),
                                   );
                                 },

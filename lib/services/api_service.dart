@@ -5,9 +5,8 @@ import 'dart:convert';
 import '../utils/api_exception.dart';
 
 class ApiService {
-  // For Android Emulator
-  static const String baseUrl =
-      'http://192.168.1.68:5000'; // يتصل بالـ Flask server
+  // المصدر المركزي لعنوان IP - قم بتغيير هذا العنوان فقط عند الحاجة
+  static const String baseUrl = 'http://192.168.1.3:5000';
 
   Future<List<dynamic>> fetchData() async {
     try {

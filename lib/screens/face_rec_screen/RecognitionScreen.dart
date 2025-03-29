@@ -2,13 +2,17 @@ import 'dart:ui' as ui;
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:io';
+import 'package:attend_me_locate/widgets/app_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../core/theming/colors.dart';
+import '../../services/api_service.dart';
 
 import 'ML/Recognition.dart';
 import 'ML/Recognizer.dart';
@@ -42,7 +46,8 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
   
   String? get _studentId {
     if (widget.studentData != null && widget.studentData!.containsKey('id')) {
-      return widget.studentData!['id'];
+      var id = widget.studentData!['id'];
+      return id?.toString(); 
     } else {
       return widget.studentId;
     }
@@ -103,7 +108,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
 
   // Face detection function
   doFaceDetection() async {
-    // Verificar que _image no sea nulo antes de continuar
+    // Check that _image is not null before continuing
     if (_image != null) {
       // Remove rotation before detection
       await removeRotation(_image!);
@@ -118,8 +123,13 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           cropAndRegisterFace(face.boundingBox);
         }
       } else {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("No faces detected")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("No faces detected"), 
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          )
+        );
       }
     }
   }
@@ -137,14 +147,18 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       num width = right - left;
       num height = bottom - top;
 
-      // أضف معلومات تصحيح أخطاء لمعرفة القيم المستخدمة
+      // Add debug information to know the values used
       print("Face detection coordinates: Left: $left, Top: $top, Width: $width, Height: $height");
 
       // Ensure image file exists before reading bytes
       if (_image == null || !_image!.existsSync()) {
         print("Error: Image file doesn't exist or is null");
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error: Image file not available")),
+          const SnackBar(
+            content: Text("Error: Image file not available"),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         return;
       }
@@ -161,24 +175,36 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           
           if (faceImg == null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Error processing image: Could not decode image format")),
+              const SnackBar(
+                content: Text("Error: Could not decode image format"),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
             );
             return;
           }
         } catch (decodeError) {
           print("Secondary decode error: $decodeError");
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Error processing image: $decodeError")),
+            SnackBar(
+              content: Text("Error: Failed to process image"),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           return;
         }
       }
       
-      // أضف فحصًا إضافيًا للأبعاد
+      // Add additional check for dimensions
       if (width <= 0 || height <= 0 || left < 0 || top < 0 || left >= faceImg.width || top >= faceImg.height) {
         print("Error: Invalid crop dimensions. Face coordinates: $left, $top, $width, $height. Image dimensions: ${faceImg.width}x${faceImg.height}");
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Invalid face dimensions detected")),
+          const SnackBar(
+            content: Text("Error: Invalid face dimensions detected"),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         return;
       }
@@ -194,7 +220,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       // Call the function that performs face recognition
       Recognition recognition = recognizer.recognize(croppedFace, boundingBox);
       
-      // أضف معلومات تصحيح أخطاء للتعرف
+      // Add debug information for recognition
       print("Recognition result: Name=${recognition.name}, Distance=${recognition.distance}");
 
       // Show result with option to re-register if result is weak or incorrect
@@ -206,7 +232,11 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       // If face is recognized successfully, show welcome message
       if (recognition.name.isNotEmpty && recognition.name != "Unknown" && recognition.distance > 0.5) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Welcome ${recognition.name}! Face verification successful.")),
+          SnackBar(
+            content: Text("Welcome ${recognition.name}! Face verification successful."),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         
         // Send face verification result to the server
@@ -215,7 +245,11 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
     } catch (e) {
       print("Error in cropAndRegisterFace: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error processing face: $e")),
+        SnackBar(
+          content: Text("Error: Face processing failed"),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -223,7 +257,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
   // Add this new method to send face verification to server
   Future<bool> _sendFaceVerificationToServer() async {
     try {
-      // Usar el getter _studentId para obtener el ID consistentemente
+      // Use the _studentId getter to consistently get the ID
       String? studentId = _studentId;
       
       if (studentId == null || studentId.isEmpty) {
@@ -231,10 +265,10 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
         return false;
       }
       
-      print('Enviando verificación facial para studentId: $studentId');
+      print('Sending face verification for student ID: $studentId');
       
       final response = await http.post(
-        Uri.parse('http://192.168.1.68:5000/attendance/verify-face'),
+        Uri.parse('${ApiService.baseUrl}/attendance/verify-face'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'student_id': studentId,
@@ -246,12 +280,12 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       if (response.statusCode == 200) {
         print('Face verification sent successfully');
         
-        // Si tenemos un courseId, también enviamos la verificación de asistencia
+        // If we have a courseId, also send attendance verification
         if (widget.courseId != null && widget.courseId!.isNotEmpty) {
           print('Sending attendance verification for course: ${widget.courseId}');
           
           final attendanceResponse = await http.post(
-            Uri.parse('http://192.168.1.68:5000/attendance/verify'),
+            Uri.parse('${ApiService.baseUrl}/attendance/verify'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'student_id': studentId, 
@@ -266,7 +300,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           return attendanceResponse.statusCode == 200;
         }
         
-        // Si no hay courseId, solo verificamos el rostro
+        // If no courseId, just verify the face
         return true;
       } else {
         print('Error sending face verification: ${response.statusCode}');
@@ -311,10 +345,15 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
     String studentName = "";
     String studentId = _studentId ?? "";
     
+    // أضف تصحيح أخطاء إضافي
+    print("Student data content: ${widget.studentData}");
+    
     if (widget.studentData != null && widget.studentData!.isNotEmpty) {
-      studentName = widget.studentData!["name"] ?? recognition.name;
+      studentName = widget.studentData!['name'] ?? recognition.name;
+      print("Using student name from data: $studentName");
     } else {
       studentName = recognition.name;
+      print("Using recognition name: $studentName");
     }
     
     print("Recognition threshold check: isRecognized=$isRecognized, name=${recognition.name}, distance=${recognition.distance}");
@@ -325,7 +364,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       barrierDismissible: false, // منع الإغلاق بالضغط خارج النافذة
       builder: (ctx) => AlertDialog(
         title: const Text(
-          "نتيجة التعرف على الوجه",
+          "Recognition Result",
           textAlign: TextAlign.center,
         ),
         content: Column(
@@ -335,16 +374,18 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
             const SizedBox(height: 10),
             Text(
               isRecognized
-                  ? "الطالب: $studentName\nنسبة التشابه: ${(recognition.distance * 100).toStringAsFixed(2)}%\nID: $studentId"
-                  : "لم يتم التعرف على الوجه أو نسبة التشابه منخفضة. الرجاء التسجيل مرة أخرى.",
-              style: const TextStyle(fontSize: 18),
+                  ? "Face verification successful!\n\nStudent: $studentName\nSimilarity: ${(recognition.distance * 100).toStringAsFixed(2)}%\nID: $studentId"
+                  : "Face not recognized or low similarity. Please register again.",
+              style: TextStyle(
+
+                  fontSize: 18, fontWeight: isRecognized ? FontWeight.bold : FontWeight.normal, color: isRecognized ? ColorsManager.darkBlueColor1 : Colors.red),
               textAlign: TextAlign.center,
             ),
             if (widget.courseId != null && widget.courseId!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: Text(
-                  "Curso ID: ${widget.courseId}",
+                  "Course ID: ${widget.courseId}",
                   style: const TextStyle(fontSize: 16),
                 ),
               ),
@@ -361,11 +402,19 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                 _sendFaceVerificationToServer().then((success) {
                   if (success) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Verificación facial enviada correctamente")),
+                      const SnackBar(
+                        content: Text("Face verification sent successfully"),
+                        backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                      ),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Error al enviar verificación facial")),
+                      const SnackBar(
+                        content: Text("Error sending face verification"),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                      ),
                     );
                   }
                 });
@@ -375,7 +424,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                 Navigator.pop(context, false);
               }
             },
-            child: const Text("موافق"),
+            child: const Text("OK"),
           ),
           // "Register Again" button to re-register and correct name
           TextButton(
@@ -384,7 +433,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
               // Open registration window with cropped face
               showFaceRegistrationDialogue(croppedFace, recognition);
             },
-            child: const Text("تسجيل مرة أخرى"),
+            child: const Text("Register Again"),
           ),
         ],
       ),
@@ -431,7 +480,11 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                   // Verificar que embedding no sea null
                   if (recognition.embedding == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("No se pudo obtener datos faciales. Intente de nuevo.")),
+                      const SnackBar(
+                        content: Text("No facial data available. Please try again."),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                      ),
                     );
                     return;
                   }
@@ -444,19 +497,22 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                   textEditingController.text = "";
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Face Registered")),
+                    const SnackBar(
+                      content: Text("Face registered successfully"),
+                      backgroundColor: Colors.green,
+                      behavior: SnackBarBehavior.floating,
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  minimumSize: const Size(200, 40),
+                  backgroundColor: ColorsManager.darkBlueColor1,
+                  foregroundColor: Colors.white,
                 ),
                 child: const Text("Register"),
               ),
             ],
           ),
         ),
-        contentPadding: EdgeInsets.zero,
       ),
     );
   }
@@ -465,21 +521,33 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Face Recognition'),
-        backgroundColor: Colors.blue.shade800,
-      ),
+      appBar: AppBar(title: const Text("Face Recognition",style: TextStyle(
+          fontSize: 20,
+          color: Colors.white
+      ),), backgroundColor: ColorsManager.darkBlueColor1,
+        leading: BackButton(
+          color: Colors.white,
+        ),),
       resizeToAvoidBottomInset: false,
       body: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          SizedBox(
+            height: 10.sp,
+          ),
+           Text('Take photo of your face', style: TextStyle(
+             fontSize: 24,
+             color: ColorsManager.darkBlueColor1,
+             fontWeight: FontWeight.bold
+           ),),
           _image != null && image != null
               ? Container(
+            height: 290,
             margin: const EdgeInsets.only(
-              top: 60,
+              top: 0,
               left: 30,
               right: 30,
-              bottom: 0,
+              bottom: 120,
             ),
             child: FittedBox(
               child: SizedBox(
@@ -492,61 +560,22 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
             ),
           )
               : Container(
-            margin: const EdgeInsets.only(top: 100),
+            margin: const EdgeInsets.only(top: 15),
             child: Icon(
-              Icons.face,
-              size: screenWidth - 100,
-              color: Colors.blue.shade200,
+              Icons.person_pin_rounded,
+              size: screenWidth - 120,
+              color: ColorsManager.darkBlueColor1,
             ),
           ),
-          Container(height: 50),
+          Container(height: 90),
           // Image capture buttons section
-          Container(
-            margin: const EdgeInsets.only(bottom: 50),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Card(
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(200)),
-                  ),
-                  child: InkWell(
-                    onTap: () {
-                      _imgFromGallery();
-                    },
-                    child: SizedBox(
-                      width: screenWidth / 2 - 70,
-                      height: screenWidth / 2 - 70,
-                      child: Icon(
-                        Icons.image,
-                        color: Colors.blue,
-                        size: screenWidth / 7,
-                      ),
-                    ),
-                  ),
-                ),
-                Card(
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(200)),
-                  ),
-                  child: InkWell(
-                    onTap: () {
-                      _imgFromCamera();
-                    },
-                    child: SizedBox(
-                      width: screenWidth / 2 - 70,
-                      height: screenWidth / 2 - 70,
-                      child: Icon(
-                        Icons.camera,
-                        color: Colors.blue,
-                        size: screenWidth / 7,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+
+          AppButton(buttonText: 'Capture', onPressed: (){
+            _imgFromCamera();
+          }),
+          SizedBox(
+            height: 20.sp,
+          )
         ],
       ),
     );
