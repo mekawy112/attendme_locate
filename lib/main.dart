@@ -7,6 +7,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart'; // Add this import
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+import 'core/theming/colors.dart';
+
 
 void main() {
   runApp(const MyApp());
@@ -86,7 +88,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[800],
+      backgroundColor: ColorsManager.darkBlueColor1,
       appBar: AppBar(
         title: const Text('Attendance'),
       ),
@@ -96,32 +98,32 @@ class _HomePageState extends State<HomePage> {
           children: [
             DrawerHeader(
               decoration: BoxDecoration(
-                color: Colors.blue.shade800,
+                color: ColorsManager.darkBlueColor1,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const CircleAvatar(
                     radius: 30,
-                    backgroundColor: Colors.white,
+                    backgroundColor: ColorsManager.whiteColor,
                     child: Icon(
                       Icons.person,
                       size: 40,
-                      color: Colors.blue,
+                      color: ColorsManager.mainBlue,
                     ),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     _userData != null ? _userData!['name'] : 'Guest User',
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: ColorsManager.whiteColor,
                       fontSize: 18,
                     ),
                   ),
                   Text(
                     _userData != null ? _userData!['email'] : 'Please log in',
                     style: const TextStyle(
-                      color: Colors.white70,
+                      color: Color.fromRGBO(255, 255, 255, 0.7),
                       fontSize: 14,
                     ),
                   ),

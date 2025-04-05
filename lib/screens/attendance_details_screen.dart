@@ -144,7 +144,7 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
       appBar: AppBar(
         leading: BackButton(color: Colors.white),
         title: Text(
-          'حضور ${widget.courseName}',
+          'Attendance: ${widget.courseName}',
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: ColorsManager.darkBlueColor1,
@@ -162,7 +162,7 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _hasError
-              ? Center(child: Text('خطأ: $_errorMessage'))
+              ? Center(child: Text('Error: $_errorMessage'))
               : _buildAttendanceScreen(),
     );
   }
@@ -170,16 +170,16 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
   Widget _buildAttendanceScreen() {
     return Column(
       children: [
-        // معلومات إحصائية
+        // Statistics information
         _buildAttendanceSummary(),
         
-        // بحث عن طالب
+        // Student search
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              labelText: 'بحث عن طالب بالرقم',
+              labelText: 'Search student by ID',
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.search),
@@ -196,7 +196,7 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
           ),
         ),
         
-        // قائمة الطلاب
+        // Student list
         Expanded(child: _buildStudentsList()),
       ],
     );
@@ -208,47 +208,83 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
       margin: const EdgeInsets.all(8.0),
       decoration: BoxDecoration(
         color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(12.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildSummaryItem('التاريخ', _selectedDate),
-          _buildSummaryItem('إجمالي الطلاب', '$_totalStudents'),
-          _buildSummaryItem('الحضور', '$_presentStudents'),
-          _buildSummaryItem('الغياب', '$_absentStudents'),
-          _buildSummaryItem('نسبة الحضور', '${_attendancePercentage.toStringAsFixed(1)}%'),
+          Text(
+            _selectedDate,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildSummaryItem('Total Students', '$_totalStudents'),
+              _buildSummaryItem('Present', '$_presentStudents', isHighlighted: true),
+              _buildSummaryItem('Percentage', '${_attendancePercentage.toStringAsFixed(1)}%'),
+            ],
+          ),
         ],
       ),
     );
   }
   
-  Widget _buildSummaryItem(String title, String value) {
-    return Column(
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
+  Widget _buildSummaryItem(String title, String value, {bool isHighlighted = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isHighlighted ? Colors.green.withOpacity(0.1) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: title == 'الغياب' ? Colors.red : Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: isHighlighted ? Colors.green : Colors.black,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildStudentsList() {
     if (_students.isEmpty) {
-      return const Center(child: Text('لا توجد بيانات للعرض'));
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_off, size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            const Text(
+              'No students to display',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      );
     }
 
     return ListView.builder(
@@ -258,25 +294,46 @@ class _AttendanceDetailsScreenState extends State<AttendanceDetailsScreen> {
         final bool isPresent = student['is_present'] ?? false;
         
         return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+          margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             leading: CircleAvatar(
-              backgroundColor: isPresent ? Colors.green : Colors.red,
+              radius: 24,
+              backgroundColor: isPresent ? Colors.green : Colors.red.shade300,
               child: Icon(
                 isPresent ? Icons.check : Icons.close,
                 color: Colors.white,
+                size: 24,
               ),
             ),
             title: Text(
-              student['student_name'] ?? 'غير معروف',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              student['student_name'] ?? 'Unknown',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            subtitle: Text('رقم الطالب: ${student['student_number'] ?? 'غير متوفر'}'),
-            trailing: Text(
-              isPresent ? 'حاضر' : 'غائب',
-              style: TextStyle(
-                color: isPresent ? Colors.green : Colors.red,
-                fontWeight: FontWeight.bold,
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                'Student ID: ${student['student_number'] ?? 'Not available'}',
+                style: TextStyle(fontSize: 14),
+              ),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isPresent ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                isPresent ? 'Present' : 'Absent',
+                style: TextStyle(
+                  color: isPresent ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
             ),
           ),

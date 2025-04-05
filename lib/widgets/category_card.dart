@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
-import '../screens/GPS.dart';
+
 import '../screens/doctor_dashboard.dart';
 import '../screens/face_rec_screen/RegistrationScreen.dart';
 import '../screens/student_courses_screen.dart';
@@ -133,11 +133,7 @@ class _CategoryCardState extends State<CategoryCard> {
                 onTap: () {
                   // التنقل إلى صفحة GPS
                   Navigator.pop(context);
-                  // Navigate to GPS screen
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LocationTrackerScreen()),
-                  );
+                  // Navigate to GPS scree);
                 },
               ),
               

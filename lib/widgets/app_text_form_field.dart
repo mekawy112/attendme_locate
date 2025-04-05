@@ -22,6 +22,8 @@ class AppTextFormField extends StatelessWidget {
   final TextInputType? keyboardType;
   final Widget? prefixIcon;
   final bool? enabled;
+  final TextStyle? style;
+  final TextStyle? labelStyle;
 
   const AppTextFormField({
     super.key,
@@ -41,20 +43,22 @@ class AppTextFormField extends StatelessWidget {
     this.keyboardType,
     this.prefixIcon,
     this.enabled,
+    this.style,
+    this.labelStyle,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       keyboardType: keyboardType ?? TextInputType.text,
-      cursorColor: cursorColor ?? ColorsManager.darkBlueColor1,
+      cursorColor: cursorColor ?? ColorsManager.blueColor,
       controller: controller,
       enabled: enabled ?? true,
       decoration: InputDecoration(
         prefixIcon: prefixIcon,
-        prefixIconColor: ColorsManager.darkBlueColor1,
+        prefixIconColor: ColorsManager.blueColor,
         labelText: label,
-        labelStyle: TextStyles.font18DarkBlueRegular.copyWith(color: ColorsManager.darkBlueColor1),
+        labelStyle: labelStyle ?? TextStyles.font18DarkBlueRegular.copyWith(color: ColorsManager.blueColor),
         isDense: true,
         alignLabelWithHint: false,
         contentPadding: contentPadding ??
@@ -93,14 +97,17 @@ class AppTextFormField extends StatelessWidget {
         ),
         hintStyle: hintStyle ??
             TextStyles.font14BlackMedium
-                .copyWith(fontWeight: FontWeightHelper.medium),
+                .copyWith(fontWeight: FontWeightHelper.medium, color: ColorsManager.greyColor),
         hintText: hintText,
         suffixIcon: suffixIcon,
-        fillColor: backgroundColor ?? Colors.transparent,
+        fillColor: backgroundColor ?? Colors.white.withOpacity(0.05),
         filled: true,
       ),
       obscureText: isObscureText ?? false,
-      style: inputTextStyle ?? TextStyles.font14WhiteRegular,
+      style: style ?? TextStyles.font14BlackMedium.copyWith(
+        fontWeight: FontWeightHelper.medium,
+        color: ColorsManager.blueColor
+      ),
       // validator: (value) {
       //   return validator(value);
       // },

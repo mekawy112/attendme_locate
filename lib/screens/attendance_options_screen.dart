@@ -72,7 +72,7 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('الموقع تم التحقق منه بنجاح!'),
+            content: Text('Location verified successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -83,7 +83,7 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('فشل التحقق من الموقع'),
+            content: Text('Location verification failed'),
             backgroundColor: Colors.red,
           ),
         );
@@ -94,10 +94,9 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
         isLoading = false;
         isLocationVerified = false;
       });
-      print('Error in location verification: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('حدث خطأ أثناء التحقق من الموقع: $e'),
+        const SnackBar(
+          content: Text('Error verifying location'),
           backgroundColor: Colors.red,
         ),
       );
@@ -107,11 +106,10 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
 
   // دالة للتحقق من حضور الطالب
   Future<void> _verifyAttendance(BuildContext context) async {
-    // فحص إضافي للتأكد من تحقق الشرطين
     if (!isFaceVerified || !isLocationVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('يجب التحقق من الوجه والموقع أولاً!'),
+          content: Text('Please verify both face and location first'),
           backgroundColor: Colors.red,
         ),
       );
@@ -123,15 +121,9 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
     });
 
     try {
-      // التحقق من بيانات الطلب قبل إرسالها
       final studentId = widget.studentData['id'];
       final courseId = widget.courseData['id'];
       
-      print('Verifying attendance for student: $studentId, course: $courseId');
-      print('Face verification status: $isFaceVerified');
-      print('Location verification status: $isLocationVerified');
-      
-      // إرسال طلب التحقق من الحضور
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/attendance/verify'),
         headers: {'Content-Type': 'application/json'},
@@ -146,9 +138,6 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
       setState(() {
         isLoading = false;
       });
-      
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
@@ -160,29 +149,27 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('تم تسجيل الحضور بنجاح!'),
+              content: Text('Attendance registered successfully'),
               backgroundColor: Colors.green,
             ),
           );
 
-          // إرسال طلب تأكيد الحضور
           final confirmResponse = await http.post(
             Uri.parse('${ApiService.baseUrl}/attendance/confirm'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'student_id': widget.studentData['id'],
-              'course_id': widget.courseData['id'],
+              'student_id': studentId,
+              'course_id': courseId,
             }),
           );
 
           if (confirmResponse.statusCode == 200) {
-            // إرسال بيانات الحضور للدكتور بعد التأكد من التحقق
             final doctorResponse = await http.post(
               Uri.parse('${ApiService.baseUrl}/attendance/send-to-doctor'),
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
-                'course_id': widget.courseData['id'],
-                'student_id': widget.studentData['id'],
+                'course_id': courseId,
+                'student_id': studentId,
                 'timestamp': DateTime.now().toIso8601String(),
                 'face_verified': true,
                 'location_verified': true,
@@ -194,33 +181,30 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
               if (doctorResult['success']) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('تم إرسال الحضور للدكتور بنجاح.'),
+                    content: Text('Attendance sent to doctor successfully'),
                     backgroundColor: Colors.green,
                   ),
                 );
               } else {
-                print('Error sending to doctor: ${doctorResult['message']}');
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('حدث خطأ أثناء إرسال البيانات للدكتور: ${doctorResult['message']}'),
+                  const SnackBar(
+                    content: Text('Error sending attendance to doctor'),
                     backgroundColor: Colors.orange,
                   ),
                 );
               }
             } else {
-              print('Error sending to doctor. Status: ${doctorResponse.statusCode}, Body: ${doctorResponse.body}');
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('فشل إرسال البيانات للدكتور. تحقق من اتصال الشبكة.'),
+                  content: Text('Failed to send attendance to doctor. Check network connection.'),
                   backgroundColor: Colors.orange,
                 ),
               );
             }
           } else {
-            print('Error confirming attendance. Status: ${confirmResponse.statusCode}, Body: ${confirmResponse.body}');
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('فشل تأكيد الحضور. تحقق من اتصال الشبكة.'),
+                content: Text('Failed to confirm attendance. Check network connection.'),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -230,8 +214,8 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
             isAttendanceConfirmed = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'حدث خطأ في تسجيل الحضور'),
+            const SnackBar(
+              content: Text('Error registering attendance'),
               backgroundColor: Colors.red,
             ),
           );
@@ -242,7 +226,7 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في التحقق من الحضور. رمز الخطأ: ${response.statusCode}'),
+            content: Text('Error verifying attendance. Code: ${response.statusCode}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -252,11 +236,9 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
         isLoading = false;
         isAttendanceConfirmed = false;
       });
-
-      print('Error in verify attendance: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في تأكيد الحضور: $e'),
+        const SnackBar(
+          content: Text('Error confirming attendance'),
           backgroundColor: Colors.red,
         ),
       );
@@ -276,46 +258,36 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
           builder: (context) => RecognitionScreen(
             studentId: widget.studentData['id'].toString(),
             studentData: widget.studentData,
+            courseId: widget.courseData['id'].toString(),
           ),
         ),
       );
 
-      if (result == true) {
-        setState(() {
-          isFaceVerified = true;
-        });
+      setState(() {
+        isFaceVerified = result == true;
+        isLoading = false;
+      });
+
+      if (isFaceVerified) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم التحقق من الوجه بنجاح!'),
+            content: Text('Face verification successful'),
             backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        setState(() {
-          isFaceVerified = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فشل التحقق من الوجه'),
-            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
-      print('Error in face recognition: $e');
       setState(() {
         isFaceVerified = false;
+        isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('حدث خطأ أثناء التعرف على الوجه: $e'),
+        const SnackBar(
+          content: Text('Face verification failed'),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
     }
   }
 
@@ -385,19 +357,13 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
                               decoration: BoxDecoration(
                                 color: isFaceVerified ? Colors.green : Colors.transparent,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.grey.shade400, width: 1),
+                                border: Border.all(color: Colors.white, width: 1),
                               ),
                               padding: const EdgeInsets.all(2),
-                              child: isFaceVerified
-                                  ? const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 18,
-                              )
-                                  : const Icon(
-                                Icons.face,
-                                color: Colors.grey,
-                                size: 18,
+                              child: Icon(
+                                Icons.check_circle,
+                                color: isFaceVerified ? Colors.white : Colors.transparent,
+                                size: 24,
                               ),
                             ),
                           ],
@@ -434,19 +400,13 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
                               decoration: BoxDecoration(
                                 color: isLocationVerified ? Colors.green : Colors.transparent,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.grey.shade400, width: 1),
+                                border: Border.all(color: Colors.white, width: 1),
                               ),
                               padding: const EdgeInsets.all(2),
-                              child: isLocationVerified
-                                  ? const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 18,
-                              )
-                                  : const Icon(
-                                Icons.location_on,
-                                color: Colors.grey,
-                                size: 18,
+                              child: Icon(
+                                Icons.check_circle,
+                                color: isLocationVerified ? Colors.white : Colors.transparent,
+                                size: 24,
                               ),
                             ),
                           ],
@@ -458,22 +418,7 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
                   const SizedBox(height: 40),
 
                   // زر تأكيد الحضور - يظهر فقط إذا لم يتم تأكيد الحضور مسبقًا
-                  if (!isAttendanceConfirmed)
-                    ElevatedButton(
-                      onPressed: (isFaceVerified && isLocationVerified && !isLoading)
-                          ? () => _verifyAttendance(context)
-                          : null, // تعطيل الزر حتى إتمام عمليتي التحقق
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: (isFaceVerified && isLocationVerified) ? Colors.green : Colors.grey.shade300,
-                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                      ),
-                      child: const Text('Confirm Attendance', style: TextStyle(fontSize: 18)),
-                    )
-                  else
-                  // رسالة تأكيد بعد تسجيل الحضور
+                  if (isAttendanceConfirmed)
                     Container(
                       padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(
@@ -490,7 +435,7 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
                           ),
                           const SizedBox(height: 10),
                           const Text(
-                            'تم تسجيل الحضور بنجاح وإرساله للدكتور',
+                            'Attendance registered and sent to the doctor successfully',
                             style: TextStyle(
                               color: Colors.green,
                               fontWeight: FontWeight.bold,
@@ -499,6 +444,32 @@ class _AttendanceOptionsScreenState extends State<AttendanceOptionsScreen> {
                             textAlign: TextAlign.center,
                           ),
                         ],
+                      ),
+                    ),
+
+                  // تأكيد الحضور في أسفل الشاشة
+                  if (!isAttendanceConfirmed)
+                    ElevatedButton(
+                      onPressed: (isFaceVerified && isLocationVerified && !isLoading)
+                          ? () => _verifyAttendance(context)
+                          : null, // تعطيل الزر حتى إتمام عمليتي التحقق
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: (isFaceVerified && isLocationVerified)
+                            ? Colors.green
+                            : Colors.grey[300],
+                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: Text(
+                        'Confirm Attendance',
+                        style: TextStyle(
+                          color: (isFaceVerified && isLocationVerified)
+                              ? Colors.white
+                              : Colors.black54,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                 ],

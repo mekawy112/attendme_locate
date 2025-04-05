@@ -9,6 +9,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
+import 'dart:convert';
 
 import '../../core/theming/colors.dart';
 import 'ML/Recognition.dart';
@@ -31,9 +32,9 @@ class RegistrationScreen extends StatefulWidget {
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
   late ImagePicker imagePicker;
-  // قائمة لتخزين الصور الملتقطة
   List<File> capturedImages = [];
   TextEditingController nameController = TextEditingController();
+  late DatabaseHelper databaseHelper;
 
   late FaceDetector faceDetector;
   late Recognizer recognizer;
@@ -44,6 +45,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   void initState() {
     super.initState();
     imagePicker = ImagePicker();
+    databaseHelper = DatabaseHelper();
+    _initDatabase();
 
     // تهيئة كاشف الوجوه باستخدام خيارات دقيقة
     final options = FaceDetectorOptions(
@@ -53,6 +56,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     // تهيئة Recognizer الذي يحمل الموديل وعمليات التعرف
     recognizer = Recognizer();
+  }
+
+  Future<void> _initDatabase() async {
+    await databaseHelper.init();
   }
 
   @override
@@ -239,45 +246,100 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return averageEmbedding;
   }
 
-  // التحقق من أن جميع الصور لنفس الشخص
-  Future<bool> _areFacesMatching(List<List<double>> embeddingsList) async {
-    if (embeddingsList.length < 2) return true;
-    
-    // عتبة التشابه - إذا كان التشابه أقل من هذه القيمة، فالوجوه مختلفة
-    const double similarityThreshold = 0.3; // Reducido aún más para ser más permisivo
-    
-    // مقارنة كل زوج من الوجوه
-    for (int i = 0; i < embeddingsList.length - 1; i++) {
-      for (int j = i + 1; j < embeddingsList.length; j++) {
-        double similarity = _calculateCosineSimilarity(embeddingsList[i], embeddingsList[j]);
-        print('Similarity between face $i and face $j: $similarity');
-        if (similarity < similarityThreshold) {
-          return false; // الوجوه مختلفة
-        }
-      }
-    }
-    
-    return true; // جميع الوجوه متطابقة
-  }
-  
-  // حساب تشابه جيب التمام بين متجهين
-  double _calculateCosineSimilarity(List<double> vec1, List<double> vec2) {
-    if (vec1.length != vec2.length) {
-      throw Exception('Vector dimensions do not match');
+  // دالة لحساب التشابه بين اثنين من الـ embeddings
+  double _calculateSimilarity(List<double> embedding1, List<double> embedding2) {
+    if (embedding1.length != embedding2.length) {
+      throw Exception('Embeddings have different lengths');
     }
     
     double dotProduct = 0.0;
     double norm1 = 0.0;
     double norm2 = 0.0;
     
-    for (int i = 0; i < vec1.length; i++) {
-      dotProduct += vec1[i] * vec2[i];
-      norm1 += vec1[i] * vec1[i];
-      norm2 += vec2[i] * vec2[i];
+    for (int i = 0; i < embedding1.length; i++) {
+      dotProduct += embedding1[i] * embedding2[i];
+      norm1 += embedding1[i] * embedding1[i];
+      norm2 += embedding2[i] * embedding2[i];
     }
     
-    // Usar sqrt de dart:math que ya fue importada
-    return dotProduct / (math.sqrt(norm1) * math.sqrt(norm2));
+    norm1 = math.sqrt(norm1);
+    norm2 = math.sqrt(norm2);
+    
+    if (norm1 == 0 || norm2 == 0) {
+      return 0.0;
+    }
+    
+    // تحويل التشابه إلى نسبة مئوية وتقييد القيمة بين 0 و 100
+    double similarity = (dotProduct / (norm1 * norm2));
+    return similarity.clamp(0.0, 1.0) * 100; // تحويل إلى نسبة مئوية
+  }
+
+  // التحقق من أن جميع الصور لنفس الشخص
+  Future<bool> _areFacesMatching(List<List<double>> embeddingsList) async {
+    if (embeddingsList.length < 2) return true;
+    
+    // تخفيف عتبة التشابه - يجب أن تكون النسبة أعلى من 20% للقبول
+    const double similarityThreshold = 20.0;
+    
+    // مقارنة كل زوج من الوجوه
+    for (int i = 0; i < embeddingsList.length - 1; i++) {
+      for (int j = i + 1; j < embeddingsList.length; j++) {
+        double similarity = _calculateSimilarity(embeddingsList[i], embeddingsList[j]);
+        print('Similarity between faces $i and $j: $similarity%');
+        
+        if (similarity < similarityThreshold) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("التحقق من الهوية: الصور ليست لنفس الشخص (نسبة التطابق: ${similarity.toStringAsFixed(1)}%). يرجى التقاط صور لنفس الشخص فقط"),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // التحقق من أن الصور لا تنتمي لطالب مسجل مسبقاً
+  Future<bool> _verifyNotRegistered(List<List<double>> embeddingsList) async {
+    try {
+      // حساب متوسط الـ embedding للصور الملتقطة
+      List<double> averageEmbedding = _calculateAverageEmbedding(embeddingsList);
+      
+      // جلب جميع الوجوه المسجلة من قاعدة البيانات
+      List<Map<String, dynamic>> registeredFaces = await databaseHelper.getAllFaces();
+      
+      // عتبة التشابه للتحقق من عدم التطابق مع وجوه مسجلة - يجب أن تكون النسبة أقل من 85% للقبول
+      const double registeredThreshold = 85.0;
+      
+      for (var face in registeredFaces) {
+        // تحويل النص JSON إلى قائمة
+        List<dynamic> embeddingJson = jsonDecode(face['embedding']);
+        List<double> registeredEmbedding = embeddingJson.map((e) => (e as num).toDouble()).toList();
+        
+        double similarity = _calculateSimilarity(averageEmbedding, registeredEmbedding);
+        print('Similarity with registered face ${face['name']}: $similarity%');
+        
+        if (similarity > registeredThreshold) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("التحقق من الهوية: الصور تنتمي لطالب مسجل مسبقاً (${face['name']}) بنسبة تطابق ${similarity.toStringAsFixed(1)}%. يرجى استخدام صورك الشخصية فقط"),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      print('Error in verification: $e');
+      return false;
+    }
   }
 
   // التحقق من وجود وجه مسجل مسبقًا للطالب
@@ -303,26 +365,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   // دالة تسجيل الوجوه: معالجة 3 صور، حساب المتوسط وتسجيلها مع اسم الطالب
   Future<void> registerFace() async {
-    // التحقق من عدد الصور
     if (capturedImages.length != 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("الرجاء التقاط 3 صور")),
-      );
-      return;
-    }
-
-    // التحقق من إدخال الاسم
-    if (nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("الرجاء إدخال الاسم")),
-      );
-      return;
-    }
-
-    // التأكد من وجود معرف للطالب
-    if (widget.studentId == null || widget.studentId!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("معرف الطالب غير متوفر")),
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Registration Error'),
+          content: Text('Please capture exactly 3 photos.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('OK'),
+            ),
+          ],
+        ),
       );
       return;
     }
@@ -332,93 +387,79 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     });
 
     try {
-      // التحقق من وجود وجه مسجل مسبقًا
-      bool hasExistingFace = await _checkExistingFace();
+      List<List<double>> embeddings = [];
       
-      if (hasExistingFace) {
-        // إذا كان هناك وجه مسجل، نسأل المستخدم إذا كان يريد الاستبدال
-        bool shouldReplace = await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("تم العثور على وجه مسجل"),
-            content: const Text("لديك وجه مسجل بالفعل. هل تريد استبداله؟"),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text("لا"),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text("نعم"),
-              ),
-            ],
-          ),
-        ) ?? false; // إذا أغلق المستخدم الحوار بدون اختيار، نفترض "لا"
-        
-        if (!shouldReplace) {
-          setState(() {
-            isProcessing = false;
-          });
-          return;
+      // Process each image to get embeddings
+      for (var image in capturedImages) {
+        final embedding = await processImageForEmbedding(image);
+        if (embedding != null) {
+          embeddings.add(embedding);
         }
       }
 
-      List<List<double>> embeddingsList = [];
-      for (int i = 0; i < capturedImages.length; i++) {
-        List<double>? emb = await processImageForEmbedding(capturedImages[i]);
-        if (emb == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("لم يتم اكتشاف وجه في الصورة ${i+1}، يرجى إعادة التقاط.")),
-          );
-          setState(() {
-            isProcessing = false;
-          });
-          return;
+      if (embeddings.length != 3) {
+        throw Exception('Failed to process all images');
+      }
+
+      // Calculate average embedding
+      List<double> averageEmbedding = List.filled(embeddings[0].length, 0);
+      for (var embedding in embeddings) {
+        for (int i = 0; i < embedding.length; i++) {
+          averageEmbedding[i] += embedding[i] / 3;
         }
-        embeddingsList.add(emb);
       }
 
-      // TEMPORALMENTE OMITIENDO la verificaciu00f3n de coincidencia de rostros
-      bool facesMatch = true; // Forzar a que siempre sea verdadero
-      
-      if (!facesMatch) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("تم اكتشاف وجوه مختلفة في الصور! يرجى التقاط صور لنفس الشخص."),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 5),
-          ),
-        );
-        setState(() {
-          isProcessing = false;
-        });
-        return;
-      }
-
-      // حساب المتوسط من الثلاثة embeddings
-      List<double> avgEmbedding = _calculateAverageEmbedding(embeddingsList);
-
-      // تسجيل الوجه في قاعدة البيانات باستخدام Recognizer مع تمرير معرف الطالب
-      recognizer.registerFaceInDB(nameController.text, avgEmbedding, widget.studentId!);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("تم تسجيل الوجه بنجاح")),
+      // Create Recognition object with average embedding
+      Recognition recognition = Recognition(
+        widget.studentData?['name'] ?? 'Unknown',
+        widget.studentId ?? '',
+        averageEmbedding,
+        0.0  // Initial distance
       );
 
-      // إعادة تهيئة المتغيرات للتسجيل الجديد
+      // Save to database
+      await databaseHelper.insertFace(
+        widget.studentId ?? '',
+        averageEmbedding,
+        widget.studentData?['name'] ?? 'Unknown'
+      );
+
+      // Reload faces in recognizer
+      await recognizer.loadRegisteredFaces();
+
       setState(() {
-        capturedImages.clear();
-        nameController.clear();
         isProcessing = false;
       });
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Face registered successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Navigate back
+      Navigator.pop(context, true);  // Return true to indicate successful registration
+
     } catch (e) {
-      print('Error during face registration: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("فشل التسجيل: ${e.toString()}")),
-      );
       setState(() {
         isProcessing = false;
       });
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Registration Error'),
+          content: Text('Failed to register face: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('OK'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -538,7 +579,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-              // عند التقاط 3 صور، عرض حقل إدخال الاسم وزر التسجيل
+              // عند التقاط 3 صور، عرض قل إدخال الاسم وزر التسجيل
               if (capturedImages.length == 3)
                 Column(
                   children: [

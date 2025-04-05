@@ -12,7 +12,7 @@ class Recognizer {
   static const int WIDTH = 112;
   static const int HEIGHT = 112;
   DatabaseHelper? dbHelper; 
-  Map<String, Recognition> registered = Map();
+  List<Recognition> registered = [];
   String get modelName => 'assets/mobile_face_net.tflite';
   bool _modelLoaded = false;
 
@@ -78,7 +78,7 @@ class Recognizer {
           
       print("Loaded face for student ID: $studentId, Name: $name");
       
-      return Recognition(name, Rect.zero, embd, 0);
+      return Recognition(name, studentId, embd, 0);
     } catch (e) {
       print("Error loading face by student ID: $e");
       return null;
@@ -101,9 +101,8 @@ class Recognizer {
             .map((e) => double.parse(e))
             .toList()
             .cast<double>();
-        Recognition recognition =
-        Recognition(name, Rect.zero, embd, 0);
-        registered.putIfAbsent(studentId, () => recognition); // u0627u0633u062au062eu062fu0627u0645 u0645u0639u0631u0641 u0627u0644u0637u0627u0644u0628 u0643u0645u0641u062au0627u062d u0628u062fu0644u0627u064b u0645u0646 u0627u0644u0627u0633u0645
+        Recognition recognition = Recognition(name, studentId, embd, 0);
+        registered.add(recognition);
         print("Registered face: $name (Student ID: $studentId) with ${embd.length} embedding points");
       } catch (e) {
         print("Error processing face record: $e");
@@ -113,54 +112,63 @@ class Recognizer {
   
   // u0639u0645u0644u064au0629 u0627u0644u062au0639u0631u0641 u0639u0644u0649 u0627u0644u0648u062cu0648u0647 u0645u0639 u062au062du0633u064au0646u0627u062a u0644u0644u062au062du0642u0642 u0645u0646 u0645u0639u0631u0641 u0627u0644u0637u0627u0644u0628
   Recognition? recognizeFace(List<double> embedding, String? studentId) {
-    // u0625u0630u0627 u062au0645 u062au0648u0641u064au0631 u0645u0639u0631u0641 u0627u0644u0637u0627u0644u0628u060c u0627u0644u062au062du0642u0642 u0641u0642u0637 u0645u0646 u0648u062cu0647 u0647u0630u0627 u0627u0644u0637u0627u0644u0628
-    if (studentId != null && registered.containsKey(studentId)) {
-      Recognition storedFace = registered[studentId]!;
-      double similarity = _calculateSimilarity(embedding, storedFace.embedding!);
-      print("Checking face for specific student ID: $studentId, Similarity: $similarity");
-      
-      if (similarity >= 0.5) { 
-        return storedFace.copyWith(distance: similarity);
+    if (studentId != null && registered.isNotEmpty) {
+      for (Recognition face in registered) {
+        if (face.studentId == studentId) {
+          double similarity = face.calculateSimilarity(embedding);
+          print("Checking face for specific student ID: $studentId, Similarity: $similarity");
+          
+          if (similarity >= 0.5) { 
+            return face.copyWith(distance: similarity);
+          }
+          return null;
+        }
       }
-      return null;
     }
 
-    // u0625u0630u0627 u0644u0645 u064au062au0645 u062au0648u0641u064au0631 u0645u0639u0631u0641 u0627u0644u0637u0627u0644u0628u060c u062au062du0642u0642 u0645u0646 u062cu0645u064au0639 u0627u0644u0648u062cu0648u0647 u0627u0644u0645u0633u062cu0644u0629
     Recognition? ans;
     double minDistance = 999;
 
-    for (Recognition entry in registered.values) {
-      double distance = _calculateSimilarity(embedding, entry.embedding!);
-      if (distance < minDistance) {
-        minDistance = distance;
-        ans = entry.copyWith(distance: distance);
+    for (Recognition entry in registered) {
+      double similarity = entry.calculateSimilarity(embedding);
+      if (similarity < minDistance) {
+        minDistance = similarity;
+        ans = entry.copyWith(distance: similarity);
       }
     }
     
-    // u0627u0644u062au062du0642u0642 u0645u0646 u0623u0646 u0627u0644u062au0634u0627u0628u0647 u0641u0648u0642 u0627u0644u062du062f u0627u0644u0623u062fu0646u0649
     if (ans != null && minDistance <= 0.6) { 
       return ans;
     }
     return null;
   }
-  
-  // u062du0633u0627u0628 u062au0634u0627u0628u0647 u062cu064au0628 u0627u0644u062au0645u0627u0645 u0628u064au0646 u0645u062au062cu0647u064au0646
-  double _calculateSimilarity(List<double> vec1, List<double> vec2) {
-    if (vec1.length != vec2.length) {
-      throw Exception('Vector dimensions do not match');
+
+  findNearest(List<double> emb) {
+    print('Finding nearest face match...');
+    Pair pair = Pair("Unknown", "unknown", -5);
+    
+    if (registered.isEmpty) {
+      print('No faces registered in database');
+      return pair;
     }
     
-    double dotProduct = 0.0;
-    double norm1 = 0.0;
-    double norm2 = 0.0;
+    print('Comparing with ${registered.length} registered faces');
+    double bestDistance = -1;
     
-    for (int i = 0; i < vec1.length; i++) {
-      dotProduct += vec1[i] * vec2[i];
-      norm1 += vec1[i] * vec1[i];
-      norm2 += vec2[i] * vec2[i];
+    for (Recognition entry in registered) {
+      double similarity = entry.calculateSimilarity(emb);
+      print('Comparing with ${entry.name}: similarity = ${(similarity * 100).toStringAsFixed(1)}%');
+      
+      if (similarity > bestDistance) {
+        bestDistance = similarity;
+        pair.distance = similarity;
+        pair.name = entry.name;
+        pair.studentId = entry.studentId;
+      }
     }
     
-    return dotProduct / (math.sqrt(norm1) * math.sqrt(norm2));
+    print('Best match: ${pair.name} with similarity ${(pair.distance * 100).toStringAsFixed(1)}%');
+    return pair;
   }
 
   Future<void> registerFaceInDB(String name, List<double> embedding, String studentId) async {
@@ -228,73 +236,47 @@ class Recognizer {
   }
 
   Recognition recognize(img.Image image, Rect location) {
-    //Check if model is loaded
+    // Check if model is loaded
     if (!_modelLoaded) {
       print('Model not yet loaded, please wait');
-      return Recognition("Not Ready", location, [], -1);
+      return Recognition("Not Ready", "unknown", [], -1);
     }
     
-    //TODO crop face from image resize it and convert it to float array
-    var input = imageToArray(image);
-    print(input.shape.toString());
-
-    //TODO output array
-    List output = List.filled(1 * 192, 0).reshape([1, 192]);
-
     try {
-      //TODO performs inference
-      final runs = DateTime.now().millisecondsSinceEpoch;
-      interpreter.run(input, output);
-      final run = DateTime.now().millisecondsSinceEpoch - runs;
-      print('Time to run inference: $run ms$output');
+      // Convert image to input array
+      var input = imageToArray(image);
+      print('Input shape: ${input.shape}');
 
-      //TODO convert dynamic list to double list
+      // Prepare output array
+      List output = List.filled(1 * 192, 0).reshape([1, 192]);
+
+      // Perform inference
+      final startTime = DateTime.now().millisecondsSinceEpoch;
+      interpreter.run(input, output);
+      final inferenceTime = DateTime.now().millisecondsSinceEpoch - startTime;
+      print('Inference time: $inferenceTime ms');
+
+      // Convert output to double list
       List<double> outputArray = output.first.cast<double>();
 
-      //TODO looks for the nearest embeeding in the database and returns the pair
+      // Find the nearest matching face
       Pair pair = findNearest(outputArray);
-      print("distance= ${pair.distance}");
+      print('Recognition distance: ${pair.distance}');
 
-      return Recognition(pair.name, location, outputArray, pair.distance);
+      // Create recognition result
+      Recognition result = Recognition(pair.name, pair.studentId, outputArray, pair.distance);
+      
+      // Print debug information
+      print('Recognition result:');
+      print('Name: ${result.name}');
+      print('Student ID: ${result.studentId}');
+      print('Distance: ${result.distance}');
+      
+      return result;
     } catch (e) {
-      print('Error in recognition: ${e.toString()}');
-      return Recognition("Error", location, [], -1);
+      print('Error during recognition: $e');
+      return Recognition("Error", "unknown", [], -1);
     }
-  }
-
-  //TODO  looks for the nearest embeeding in the database and returns the pair which contain information of registered face with which face is most similar
-  findNearest(List<double> emb) {
-    Pair pair = Pair("Unknown", -5);
-    print("Searching among ${registered.entries.length} registered faces");
-    
-    if (registered.entries.isEmpty) {
-      print("No registered faces found in database!");
-      return pair;
-    }
-    
-    for (MapEntry<String, Recognition> item in registered.entries) {
-      final String name = item.key;
-      List<double>? knownEmb = item.value.embedding; // Cambiar embeddings a embedding
-      
-      // Verificar si knownEmb es null
-      if (knownEmb == null) {
-        print("Warning: Null embedding found for $name");
-        continue;
-      }
-      
-      double distance = 0;
-      for (int i = 0; i < emb.length; i++) {
-        double diff = emb[i] - knownEmb[i];
-        distance += diff * diff;
-      }
-      distance = math.sqrt(distance);
-      print("Compared with $name: distance = $distance");
-      if (pair.distance == -5 || distance < pair.distance) {
-        pair.distance = distance;
-        pair.name = name;
-      }
-    }
-    return pair;
   }
 
   void close() {
@@ -304,6 +286,7 @@ class Recognizer {
 
 class Pair {
   String name;
+  String studentId;
   double distance;
-  Pair(this.name, this.distance);
+  Pair(this.name, this.studentId, this.distance);
 }

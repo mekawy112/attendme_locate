@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_services.dart';
+import '../core/theming/colors.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -12,20 +15,35 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _studentIdController = TextEditingController();
+  final _confirmPasswordController = TextEditingController(); // إضافة حقل تأكيد كلمة المرور
+  final _idController = TextEditingController(); // تغيير اسم المتحكم ليكون أكثر عمومية
   final _nameController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
   String _selectedRole = 'student';
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
   Future<void> _handleSignUp() async {
     if (_emailController.text.isEmpty ||
         _passwordController.text.isEmpty ||
-        _studentIdController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty ||
+        _idController.text.isEmpty ||
         _nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please fill all fields'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    // التحقق من تطابق كلمتي المرور
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Passwords do not match'),
           backgroundColor: Colors.red,
         ),
       );
@@ -40,7 +58,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final result = await _authService.signUp(
         email: _emailController.text,
         password: _passwordController.text,
-        studentId: _studentIdController.text,
+        studentId: _idController.text, // استخدام المتحكم الجديد
         name: _nameController.text,
         role: _selectedRole,
       );
@@ -77,12 +95,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage("assets/images/WhatsApp Image 2025-03-10 at 20.48.39_ce574561.jpg"),
-                fit: BoxFit.cover,
-              ),
+          // خلفية جديدة
+          Positioned.fill(
+            child: SvgPicture.asset(
+              "assets/svgs/signup_background.svg",
+              fit: BoxFit.cover,
             ),
           ),
           Center(
@@ -112,9 +129,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     icon: Icons.email,
                   ),
                   const SizedBox(height: 16),
+                  // حقل الهوية مع تغيير النص بناءً على نوع المستخدم
                   _buildTextField(
-                    controller: _studentIdController,
-                    hint: "Student/Doctor ID",
+                    controller: _idController,
+                    hint: _selectedRole == 'student' ? "Student ID" : "Doctor ID",
                     icon: Icons.badge,
                   ),
                   const SizedBox(height: 16),
@@ -122,9 +140,40 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     controller: _passwordController,
                     hint: "Password",
                     icon: Icons.lock,
-                    isPassword: true,
+                    isPassword: !_isPasswordVisible,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
+                  // إضافة حقل تأكيد كلمة المرور
+                  _buildTextField(
+                    controller: _confirmPasswordController,
+                    hint: "Confirm Password",
+                    icon: Icons.lock_outline,
+                    isPassword: !_isConfirmPasswordVisible,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isConfirmPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // تغيير طريقة اختيار نوع المستخدم
                   _buildRoleSelector(),
                   const SizedBox(height: 24),
                   ElevatedButton(
@@ -167,12 +216,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     required String hint,
     required IconData icon,
     bool isPassword = false,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
       obscureText: isPassword,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.white),
+        suffixIcon: suffixIcon,
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white70),
         filled: true,
@@ -187,34 +238,73 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildRoleSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: DropdownButton<String>(
-        value: _selectedRole,
-        dropdownColor: Colors.blue[700],
-        style: const TextStyle(color: Colors.white),
-        isExpanded: true,
-        underline: Container(),
-        items: const [
-          DropdownMenuItem(
-            value: 'student',
-            child: Text('Student'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+          child: Text(
+            "Select Role",
+            style: TextStyle(color: Colors.white70),
           ),
-          DropdownMenuItem(
-            value: 'doctor',
-            child: Text('Doctor'),
-          ),
-        ],
-        onChanged: (value) {
-          setState(() {
-            _selectedRole = value!;
-          });
-        },
-      ),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedRole = 'student';
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _selectedRole == 'student'
+                        ? ColorsManager.blueColor
+                        : Colors.white.withOpacity(0.3),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(10),
+                      bottomLeft: Radius.circular(10),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    "Student",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedRole = 'doctor';
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _selectedRole == 'doctor'
+                        ? ColorsManager.blueColor
+                        : Colors.white.withOpacity(0.3),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(10),
+                      bottomRight: Radius.circular(10),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    "Doctor",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

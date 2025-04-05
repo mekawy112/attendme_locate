@@ -10,59 +10,57 @@ class AuthService {
   static String get baseUrl => ApiService.baseUrl;
 
   // Login method
-  Future<Map<String, dynamic>> login(String email, String password) async {
+  Future<Map<String, dynamic>?> login(String email, String password) async {
     try {
-      print('Making login request to: $baseUrl/login');
-
-      // Make sure we're sending strings for both email and password
-      final response = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: {'Content-Type': 'application/json'},
+      var response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/user/login'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: json.encode({
-          'email': email.toString().trim(),
-          'password': password.toString().trim(),
+          'email': email,
+          'password': password,
         }),
       );
 
-      print('Login response status: ${response.statusCode}');
-      print('Login response body: ${response.body}');
+      if (response.statusCode == 200) {
+        try {
+          Map<String, dynamic> responseJson = json.decode(response.body);
+          if (!responseJson.containsKey('token') || !responseJson.containsKey('user')) {
+            throw Exception('Invalid server response format');
+          }
+          
+          String token = responseJson['token'];
+          Map<String, dynamic> userData = responseJson['user'];
 
-      final data = json.decode(response.body);
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        // Store user data in SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-
-        // Store token if available
-        if (data['token'] != null) {
-          await prefs.setString('token', data['token'].toString());
-        } else {
-          print('Warning: No token received from server');
+          // Save auth data to SharedPreferences
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('token', token);
+          await prefs.setString('user_data', json.encode(userData));
+          
+          
+          return userData;
+        } catch (e) {
+          throw Exception('Error processing server response: ${e.toString()}');
         }
-
-        // Store user data as JSON string
-        if (data['user'] != null) {
-          await prefs.setString('user_data', json.encode(data['user']));
-          print('Stored user data: ${data['user']}');
-        }
-
-        return {
-          'success': true,
-          'user': data['user'],
-          'message': data['message'] ?? 'Login successful',
-        };
       } else {
-        return {
-          'success': false,
-          'message': data['message'] ?? 'Login failed',
-        };
+        Map<String, dynamic> errorResponse = {};
+        try {
+          errorResponse = json.decode(response.body);
+        } catch (e) {
+          // Ignore decode error and use default messages
+        }
+        
+        if (response.statusCode == 401) {
+          throw Exception(errorResponse['message'] ?? 'Invalid email or password');
+        } else if (response.statusCode == 400) {
+          throw Exception(errorResponse['message'] ?? 'Invalid request data');
+        } else {
+          throw Exception(errorResponse['message'] ?? 'Server error occurred. Please try again later.');
+        }
       }
     } catch (e) {
-      print('Login error: $e');
-      return {
-        'success': false,
-        'message': 'Network error: $e',
-      };
+      throw Exception('Error: $e');
     }
   }
 
@@ -121,11 +119,19 @@ class AuthService {
   Future<bool> logout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      // Clear token
       await prefs.remove('token');
+      
+      // Clear user data
       await prefs.remove('user_data');
+      
+      // Clear any other stored data related to the session
+      await prefs.remove('attendance_notifications');
+      
       return true;
     } catch (e) {
-      print('Logout error: $e');
+      print('Error during logout: $e');
       return false;
     }
   }

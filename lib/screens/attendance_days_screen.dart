@@ -7,6 +7,7 @@ import '../core/theming/colors.dart';
 import '../services/api_service.dart';
 import '../services/course_service.dart';
 import 'attendance_details_screen.dart';
+import 'attendance_summary_screen.dart';
 
 class AttendanceDaysScreen extends StatefulWidget {
   final int courseId;
@@ -127,15 +128,31 @@ class _AttendanceDaysScreenState extends State<AttendanceDaysScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'حضور ${widget.courseName}',
+          'Attendance: ${widget.courseName}',
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: ColorsManager.darkBlueColor1,
         actions: [
+          // إضافة زر ملخص الحضور الإجمالي
+          IconButton(
+            icon: const Icon(Icons.summarize, color: Colors.white),
+            tooltip: 'Attendance Summary',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AttendanceSummaryScreen(
+                    courseId: widget.courseId,
+                    courseName: widget.courseName,
+                  ),
+                ),
+              );
+            },
+          ),
           // إضافة زر لعرض حضور اليوم مباشرة
           IconButton(
             icon: const Icon(Icons.today, color: Colors.white),
-            tooltip: 'عرض حضور اليوم',
+            tooltip: 'Today\'s Attendance',
             onPressed: () {
               Navigator.push(
                 context,
@@ -157,9 +174,9 @@ class _AttendanceDaysScreenState extends State<AttendanceDaysScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _hasError
-              ? Center(child: Text('خطأ: $_errorMessage'))
+              ? Center(child: Text('Error: $_errorMessage'))
               : _dates.isEmpty
-                  ? const Center(child: Text('لا توجد بيانات حضور متاحة'))
+                  ? const Center(child: Text('No attendance data available'))
                   : ListView.builder(
                       itemCount: _dates.length,
                       padding: const EdgeInsets.all(16),

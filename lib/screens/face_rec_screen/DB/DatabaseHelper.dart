@@ -1,6 +1,7 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
 
 class DatabaseHelper {
   static const _databaseName = "MyDatabase.db";
@@ -138,5 +139,51 @@ class DatabaseHelper {
       where: '$columnId = ?',
       whereArgs: [id],
     );
+  }
+
+  // إضافة وجه جديد إلى قاعدة البيانات
+  Future<int> insertFace(String studentId, List<double> embedding, String name) async {
+    // تحويل الـ embedding إلى نص JSON للتخزين
+    String embeddingJson = jsonEncode(embedding);
+    
+    Map<String, dynamic> row = {
+      columnStudentId: studentId,
+      columnName: name,
+      columnEmbedding: embeddingJson,
+    };
+    
+    return await insert(row);
+  }
+
+  // جلب جميع الوجوه المسجلة
+  Future<List<Map<String, dynamic>>> getAllFaces() async {
+    return await queryAllRows();
+  }
+
+  // جلب وجه طالب معين
+  Future<List<Map<String, dynamic>>> getFaceByStudentId(String studentId) async {
+    return await queryStudentById(studentId);
+  }
+
+  // تحديث وجه طالب موجود
+  Future<int> updateFace(String studentId, List<double> embedding, String name) async {
+    String embeddingJson = jsonEncode(embedding);
+    
+    Map<String, dynamic> row = {
+      columnName: name,
+      columnEmbedding: embeddingJson,
+    };
+    
+    return await _db.update(
+      table,
+      row,
+      where: '$columnStudentId = ?',
+      whereArgs: [studentId],
+    );
+  }
+
+  // حذف جميع الوجوه المسجلة
+  Future<void> clearAllFaces() async {
+    await _db.delete(table);
   }
 }

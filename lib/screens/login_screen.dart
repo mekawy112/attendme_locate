@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:attend_me_locate/screens/signup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/theming/colors.dart';
 import '../services/auth_services.dart';
@@ -37,45 +38,62 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
     try {
-      final result = await _authService.login(
-        _emailController.text,
+      String email = _emailController.text.trim();
+      String password = _passwordController.text;
+
+      if (email.isEmpty) {
+        throw Exception('Please enter your email');
+      }
+      if (!email.contains('@')) {
+        throw Exception('Please enter a valid email address');
+      }
+      if (password.isEmpty) {
+        throw Exception('Please enter your password');
+      }
+      if (password.length < 6) {
+        throw Exception('Password must be at least 6 characters long');
+      }
+
+      final userData = await _authService.login(
+        _emailController.text.trim(),
         _passwordController.text,
       );
 
-      if (result['success']) {
+      if (userData != null) {
         // Check the user's role and navigate accordingly
-        if (result['user']['role'] == 'doctor') {
+        if (userData['role'] == 'doctor') {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => DoctorDashboard(
-                doctorData: result['user'],
+                doctorData: userData,
               ),
             ),
           );
         } else {
+          // Navigate to home screen
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => HomeScreen(
-                userData: result['user'], // Pass the user data here
+                userData: userData,
               ),
             ),
           );
         }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     } catch (e) {
+      String errorMessage = e.toString();
+      // Remove 'Exception: ' prefix from error message if present
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring('Exception: '.length);
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: $e'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     } finally {
@@ -90,19 +108,11 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background Image
+          // Background SVG
           Positioned.fill(
-            child: Image.asset(
-              "assets/images/WhatsApp Image 2025-03-10 at 20.48.39_ce574561.jpg",
+            child: SvgPicture.asset(
+              "assets/svgs/login_background.svg",
               fit: BoxFit.cover,
-            ),
-          ),
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
-              child: Container(
-                color: Colors.black.withOpacity(0.2),
-              ),
             ),
           ),
           // Content
@@ -116,36 +126,62 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     "Attendity",
                     style: TextStyle(
-                      fontSize: 28.sp,
+                      fontSize: 32.sp,
                       fontWeight: FontWeight.bold,
-                      color: ColorsManager.blueColor,
+                      color: ColorsManager.whiteColor,
+                      shadows: [
+                        Shadow(
+                          color: ColorsManager.whiteColor.withOpacity(0.5),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 20.sp),
-                  // Illustration Image (Replace with your asset image)
-                  Image.asset(
-                    'assets/images/Attendity.png', // Add your image in assets
-                    height: 160.h,
+                  SizedBox(height: 30.sp),
+                  // Illustration Image
+                  Container(
+                    width: 180.w,
+                    height: 180.h,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: ColorsManager.whiteColor,
+                      boxShadow: [
+                        BoxShadow(
+                          color: ColorsManager.whiteColor.withOpacity(0.3),
+                          spreadRadius: 5,
+                          blurRadius: 7,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Image.asset(
+                      'assets/images/Attendity.png',
+                      fit: BoxFit.contain,
+                    ),
                   ),
-                  SizedBox(height: 20.sp),
+                  SizedBox(height: 30.sp),
                   // "Login to Your Account" Text
                   Text(
                     "LOGIN TO YOUR ACCOUNT",
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 18.sp,
                       fontWeight: FontWeight.bold,
-                      color: ColorsManager.blueColor,
+                      color: Colors.white,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  SizedBox(height: 20.sp),
+                  SizedBox(height: 30.sp),
 
                   // Email Field
                   AppTextFormField(
                     label: 'University Account',
                     hintText: 'Enter your account',
                     controller: _emailController,
-                    prefixIcon: const Icon(Icons.account_circle_outlined,
-                        color: Colors.white),
+                    prefixIcon: const Icon(Icons.account_circle_outlined, color: ColorsManager.whiteColor),
+                    style: const TextStyle(color: ColorsManager.whiteColor, fontSize: 16),
+                    labelStyle: const TextStyle(color: ColorsManager.whiteColor, fontSize: 16),
+                    hintStyle: const TextStyle(color: ColorsManager.whiteColor, fontSize: 16),
                   ),
                   const SizedBox(height: 16),
                   AppTextFormField(
@@ -153,11 +189,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     hintText: 'Please enter your password',
                     controller: _passwordController,
                     isObscureText: !_isPasswordVisible,
-                    prefixIcon: const Icon(Icons.lock, color: Colors.white),
+                    prefixIcon: const Icon(Icons.lock, color: ColorsManager.whiteColor),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.white,
+                        color: ColorsManager.whiteColor,
                       ),
                       onPressed: () {
                         setState(() {
@@ -165,33 +201,30 @@ class _LoginScreenState extends State<LoginScreen> {
                         });
                       },
                     ),
+                    style: const TextStyle(color: ColorsManager.whiteColor, fontSize: 16),
+                    labelStyle: const TextStyle(color: ColorsManager.whiteColor, fontSize: 16),
+                    hintStyle: const TextStyle(color: ColorsManager.whiteColor, fontSize: 16),
                   ),
-
-                  const SizedBox(height: 10),
-                  // Remember Me Checkbox
-                  Row(
-                    children: [],
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleLogin,
                     style: ElevatedButton.styleFrom(
-                      fixedSize: Size(
-                        164.w,
-                        55.h,
-                      ),
-                      backgroundColor: Color(0XFF1C2D40),
+                      fixedSize: Size(200.w, 55.h),
+                      backgroundColor: ColorsManager.whiteColor,
+                      foregroundColor: ColorsManager.darkBlueColor1,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30.sp),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 20, horizontal: 20),
+                      elevation: 5,
                     ),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
+                        ? const CircularProgressIndicator(color: ColorsManager.darkBlueColor1)
+                        : Text(
                             "LOG IN",
-                            style: TextStyle(fontSize: 18, color: Colors.white),
+                            style: TextStyle(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                   ),
                   const SizedBox(height: 20),
@@ -199,13 +232,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (context) => const SignUpScreen()),
+                        MaterialPageRoute(builder: (context) => const SignUpScreen()),
                       );
                     },
-                    child: const Text(
+                    child: Text(
                       "Don't have an account? Sign Up",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(
+                        color: ColorsManager.whiteColor,
+                        fontSize: 16,
+                        shadows: [Shadow(color: ColorsManager.whiteColor.withOpacity(0.5), blurRadius: 2)],
+                      ),
                     ),
                   ),
                 ],

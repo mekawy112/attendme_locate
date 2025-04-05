@@ -100,7 +100,7 @@ class CourseDetailScreen extends StatelessWidget {
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
-                        color: Colors.red.shade400,
+                        color: Colors.grey.shade500,
                         child: const Text(
                           'Attendance is currently closed',
                           textAlign: TextAlign.center,

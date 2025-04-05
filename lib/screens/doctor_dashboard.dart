@@ -6,7 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import '../services/course_service.dart';
 import 'attendance_days_screen.dart';
 import 'attendance_details_screen.dart';
-import 'course_detail_screen.dart'; // Import the CourseDetailScreen
+import './attendance_summary_screen.dart'; 
+import 'course_detail_screen.dart'; 
 
 class DoctorDashboard extends StatefulWidget {
   final Map<String, dynamic> doctorData;
@@ -261,46 +262,120 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       },
                       child: Card(
                         color: ColorsManager.blueColor,
-                        margin: const EdgeInsets.only(bottom: 16),
+                        margin: const EdgeInsets.only(bottom: 10), // Reduced margin
                         elevation: 2,
                         child: Padding(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(12), // Reduced padding
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(course['name'] ?? 'Unknown Name',
                                   style: const TextStyle(
-                                      fontSize: 24,
+                                      fontSize: 20, // Reduced font size
                                       fontWeight: FontWeight.bold)),
-                              Text("Day: ${course['day'] ?? 'N/A'}",style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500
-                              ),),
-                              Text("Time: ${course['time'] ?? 'N/A'}",style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500
-                              ),),
-                              Text("Code: ${course['enrollment_code'] ?? 'N/A'}",style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500
-                              ),),
-                              Text("${course['students'] ?? 0} students",style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500
-                              ),),
-                              Text("Location: ${course['location'] ?? 'N/A'}",style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500
-                              ),),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 4), // Reduced space
                               Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Attendance Registration',style: TextStyle(
-                                  fontSize: 16,
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("Day: ${course['day'] ?? 'N/A'}", style: TextStyle(
+                                            fontSize: 14, // Reduced font size
+                                            fontWeight: FontWeight.w500
+                                        )),
+                                        Text("Time: ${course['time'] ?? 'N/A'}", style: TextStyle(
+                                            fontSize: 14, // Reduced font size
+                                            fontWeight: FontWeight.w500
+                                        )),
+                                      ],
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("Code: ${course['enrollment_code'] ?? 'N/A'}", style: TextStyle(
+                                            fontSize: 14, // Reduced font size
+                                            fontWeight: FontWeight.w500
+                                        )),
+                                        Text("Students: ${course['students'] ?? 0}", style: TextStyle(
+                                            fontSize: 14, // Reduced font size
+                                            fontWeight: FontWeight.w500
+                                        )),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text("Location: ${course['location'] ?? 'N/A'}", style: TextStyle(
+                                  fontSize: 14, // Reduced font size
                                   fontWeight: FontWeight.w500
-                              ),),
+                              )),
+                              const SizedBox(height: 4), // Reduce spacing
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => AttendanceDaysScreen(
+                                              courseId: course['id'],
+                                              courseName: course['name'] ?? 'Unknown Course',
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: const Text('View Attendance', style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500
+                                      )),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => AttendanceSummaryScreen(
+                                              courseId: course['id'],
+                                              courseName: course['name'] ?? 'Unknown Course',
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: const Text('Attendance Summary', style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500
+                                      )),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8), // Reduced space
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Attendance Registration', style: TextStyle(
+                                      fontSize: 14, // Reduced font size
+                                      fontWeight: FontWeight.w500
+                                  )),
                                   Switch(
                                     value: course['isAttendanceOpen'] ?? false,
                                     onChanged: (value) async {
@@ -336,23 +411,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                                     },
                                   ),
                                 ],
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => AttendanceDaysScreen(
-                                        courseId: course['id'],
-                                        courseName: course['name'] ?? 'Unknown Course',
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: const Text('View Attendance',style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500
-                                ),),
                               ),
                             ],
                           ),

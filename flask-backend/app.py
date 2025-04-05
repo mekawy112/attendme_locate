@@ -14,6 +14,7 @@ from sqlalchemy.pool import QueuePool
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from math import radians, sin, cos, sqrt, atan2  # Add these imports
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -70,13 +71,13 @@ class Location(db.Model):
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # Increased length for password hash
     embedding = db.Column(db.Text, nullable=True)  # إضافة عمود التشفير
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # Increased length for password hash
     student_id = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'student' or 'doctor'
@@ -197,59 +198,92 @@ def add_data():
         print(f"Error: {e}")  # وهذا للأخطاء
         return jsonify({"error": str(e)}), 500
 
-@app.route('/login', methods=['POST'])
+@app.route('/user/login', methods=['POST'])
 def login():
     try:
         data = request.json
         if not data:
+            app.logger.warning('Login attempt with no data provided')
             return jsonify({
                 'success': False,
                 'message': 'No data provided'
             }), 400
             
+        # Trim email to remove any leading/trailing whitespace
         email = data.get('email')
+        if email:
+            email = email.strip()
         password = data.get('password')
         
-        # Log the received data for debugging
-        print(f"Login attempt with email: {email}, password type: {type(password)}")
-        
+        if not email or not password:
+            app.logger.warning(f'Login attempt with missing credentials: email={bool(email)}, password={bool(password)}')
+            return jsonify({
+                'success': False,
+                'message': 'Email and password are required'
+            }), 400
+
         # Find the user
         user = User.query.filter_by(email=email).first()
         
-        if user and user.password == password:
-            # Generate JWT token
-            token_payload = {
-                'user_id': str(user.id),
-                'exp': datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
-            }
-            
-            # Use pyjwt instead of jwt
-            token = pyjwt.encode(
-                token_payload, 
-                app.config['SECRET_KEY'], 
-                algorithm='HS256'
-            )
-            
-            # If token is returned as bytes, decode to string
-            if isinstance(token, bytes):
-                token = token.decode('utf-8')
-            
-            return jsonify({
-                'success': True,
-                'message': 'Login successful',
-                'token': token,
-                'user': user.to_dict()
-            }), 200
-        else:
+        if not user:
+            app.logger.warning(f'Login attempt failed: user not found for email {email}')
             return jsonify({
                 'success': False,
                 'message': 'Invalid email or password'
             }), 401
+
+        # تحسين التحقق من كلمة المرور وإضافة المزيد من التفاصيل في السجل
+        try:
+            # طباعة معلومات تصحيح الأخطاء لفهم المشكلة
+            app.logger.debug(f'Stored password hash: {user.password}')
+            app.logger.debug(f'Password type: {type(password)}')
+            
+            # التحقق من صحة كلمة المرور
+            if not check_password_hash(user.password, password):
+                app.logger.warning(f'Login attempt failed: invalid password for email {email}. Password hash mismatch.')
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid email or password'
+                }), 401
+        except Exception as e:
+            app.logger.error(f'Error during password verification for email {email}: {str(e)}')
+            return jsonify({
+                'success': False,
+                'message': 'An error occurred during login'
+            }), 500
+
+        # Generate JWT token
+        token_payload = {
+            'user_id': str(user.id),
+            'email': user.email,
+            'role': user.role,
+            'exp': datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
+        }
+        
+        # Use pyjwt instead of jwt
+        token = pyjwt.encode(
+            token_payload, 
+            app.config['SECRET_KEY'], 
+            algorithm='HS256'
+        )
+        
+        # If token is returned as bytes, decode to string
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
+        
+        app.logger.info(f'Successful login for user: {email}')
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'token': token,
+            'user': user.to_dict()
+        }), 200
+
     except Exception as e:
-        print(f"Error in login: {e}")
+        app.logger.error(f'Error in login: {str(e)}')
         return jsonify({
             'success': False,
-            'message': f'Server error: {str(e)}'
+            'message': 'An error occurred during login'
         }), 500
 
 # Add this new route
@@ -267,6 +301,14 @@ def signup():
                     'success': False,
                     'message': f'Missing required field: {field}'
                 }), 400
+                
+        # Trim email and student_id to remove any leading/trailing whitespace
+        if 'email' in data:
+            data['email'] = data['email'].strip()
+        if 'student_id' in data:
+            data['student_id'] = data['student_id'].strip()
+        if 'name' in data:
+            data['name'] = data['name'].strip()
 
         # Check if user already exists
         existing_user = User.query.filter(
@@ -280,10 +322,16 @@ def signup():
                 'message': 'Email or Student ID already registered'
             }), 400
 
+        # Hash password before storing - use method='pbkdf2:sha256' for better security
+        hashed_password = generate_password_hash(data['password'], method='pbkdf2:sha256')
+        
+        # Log the password hash for debugging
+        logger.debug(f"Generated password hash: {hashed_password}")
+
         # Create new user
         new_user = User(
             email=data['email'],
-            password=data['password'],  # TODO: Add password hashing
+            password=hashed_password,
             student_id=data['student_id'],
             name=data['name'],
             role=data['role']
@@ -961,27 +1009,48 @@ def verify_attendance():
         student_id = data.get('student_id')
         course_id = data.get('course_id')
         
-        # تحقق من وجود السجلات
+        # Check for required records
         if not student_id or not course_id:
             return jsonify({
                 'success': False,
                 'message': 'Missing student_id or course_id'
             }), 400
         
-        # استخراج حالة التحقق من الوجه من البيانات المرسلة
+        # Extract face verification status from sent data
         face_verified = data.get('face_verified', False)
         
-        # استخراج حالة التحقق من الموقع من البيانات المرسلة
+        # Extract location verification status from sent data
         location_verified = data.get('location_verified', False)
         
-        # التحقق من أن كلا الشرطين قد تم تحقيقهما
+        # Check that both conditions are met
         if not face_verified or not location_verified:
             return jsonify({
                 'success': False,
-                'message': 'يجب التحقق من الوجه والموقع معًا لتسجيل الحضور'
+                'message': 'Both face and location verification are required to mark attendance'
             }), 400
         
-        # تحقق من حالة التعرف على الوجه في قاعدة البيانات
+        # Check first if student already has attendance for this course today
+        now = datetime.datetime.now()
+        today = now.date()
+        existing_attendance = Attendance.query.filter_by(
+            student_id=student_id,
+            course_id=course_id,
+            date=today
+        ).first()
+        
+        if existing_attendance:
+            # Get course name for notification
+            course = Course.query.get(course_id)
+            course_name = course.name if course else "Unknown Course"
+            
+            return jsonify({
+                'success': True,
+                'already_recorded': True,
+                'message': 'Your attendance has already been recorded for this course today',
+                'course_name': course_name
+            }), 200
+        
+        # Check face recognition record in database
         face_record = FaceRecognition.query.filter_by(
             student_id=student_id
         ).order_by(FaceRecognition.timestamp.desc()).first()
@@ -992,16 +1061,15 @@ def verify_attendance():
                 'message': 'Face verification not found in database'
             }), 400
         
-        # تحقق إذا كان التعرف على الوجه تم في آخر 15 دقيقة
-        now = datetime.datetime.now()
+        # Check if face recognition was done in the last 15 minutes
         face_time_diff = (now - face_record.timestamp).total_seconds()
-        if face_time_diff > 15 * 60:  # 15 دقيقة
+        if face_time_diff > 15 * 60:  # 15 minutes
             return jsonify({
                 'success': False,
                 'message': 'Face verification expired, please verify again'
             }), 400
         
-        # تحقق من حالة التحقق من الموقع في قاعدة البيانات للتأكد
+        # Check location verification status in database
         location_record = StudentLocation.query.filter_by(
             student_id=student_id,
             course_id=course_id
@@ -1013,18 +1081,18 @@ def verify_attendance():
                 'message': 'Location verification not found in database'
             }), 400
         
-        # تحقق إذا كان التحقق من الموقع تم في آخر 15 دقيقة
+        # Check if location verification was done in the last 15 minutes
         location_time_diff = (now - location_record.timestamp).total_seconds()
-        if location_time_diff > 15 * 60:  # 15 دقيقة
+        if location_time_diff > 15 * 60:  # 15 minutes
             return jsonify({
                 'success': False,
                 'message': 'Location verification expired, please verify again'
             }), 400
         
-        # تسجيل محاولة التحقق في السجلات
+        # Log verification attempt
         app.logger.info(f"Attendance verification: student_id={student_id}, course_id={course_id}, face={face_verified}, location={location_verified}")
         
-        # إذا تحققت جميع الشروط، سجل الحضور
+        # If all conditions are met, record attendance
         attendance = Attendance(
             student_id=student_id,
             course_id=course_id,
@@ -1035,9 +1103,15 @@ def verify_attendance():
         db.session.add(attendance)
         db.session.commit()
         
+        # Get course name for response
+        course = Course.query.get(course_id)
+        course_name = course.name if course else "Unknown Course"
+        
         return jsonify({
             'success': True,
-            'message': 'Attendance verified successfully'
+            'already_recorded': False,
+            'message': 'Attendance recorded successfully',
+            'course_name': course_name
         }), 200
         
     except Exception as e:
@@ -1055,14 +1129,14 @@ def confirm_attendance():
         student_id = data.get('student_id')
         course_id = data.get('course_id')
         
-        # تحقق من وجود السجلات
+        # Check for required records
         if not student_id or not course_id:
             return jsonify({
                 'success': False,
                 'message': 'Missing student_id or course_id'
             }), 400
         
-        # البحث عن سجل التحقق من الوجه حسب معرف الطالب
+        # Search for face recognition record by student ID
         face_record = FaceRecognition.query.filter_by(
             student_id=student_id
         ).order_by(FaceRecognition.timestamp.desc()).first()
@@ -1073,16 +1147,16 @@ def confirm_attendance():
                 'message': 'Face verification not found in database'
             }), 400
         
-        # التحقق من أن التعرف على الوجه كان في آخر 15 دقيقة
+        # Check if face recognition was done in the last 15 minutes
         now = datetime.datetime.now()
         face_time_diff = (now - face_record.timestamp).total_seconds()
-        if face_time_diff > 15 * 60:  # 15 دقيقة
+        if face_time_diff > 15 * 60:  # 15 minutes
             return jsonify({
                 'success': False,
                 'message': 'Face verification expired, please verify again'
             }), 400
         
-        # البحث عن سجل التحقق من الموقع حسب معرف الطالب ومعرف المقرر
+        # Search for location verification record by student ID and course ID
         location_record = StudentLocation.query.filter_by(
             student_id=student_id,
             course_id=course_id
@@ -1094,15 +1168,15 @@ def confirm_attendance():
                 'message': 'Location verification not found in database'
             }), 400
         
-        # التحقق من أن التحقق من الموقع كان في آخر 15 دقيقة
+        # Check if location verification was done in the last 15 minutes
         location_time_diff = (now - location_record.timestamp).total_seconds()
-        if location_time_diff > 15 * 60:  # 15 دقيقة
+        if location_time_diff > 15 * 60:  # 15 minutes
             return jsonify({
                 'success': False,
                 'message': 'Location verification expired, please verify again'
             }), 400
         
-        # إذا تحققت جميع الشروط، سجل الحضور
+        # If all conditions are met, record attendance
         attendance = Attendance(
             student_id=student_id,
             course_id=course_id,
@@ -1131,7 +1205,7 @@ def send_attendance_to_doctor():
     try:
         data = request.get_json()
         course_id = data.get('course_id')
-        date_str = data.get('date')  # اختياري
+        date_str = data.get('date')  # Optional
         
         if not course_id:
             return jsonify({
@@ -1139,7 +1213,7 @@ def send_attendance_to_doctor():
                 'message': 'Missing course_id'
             }), 400
         
-        # تهيئة استعلام قاعدة البيانات
+        # Initialize database query
         query = db.session.query(
             Attendance, User.name.label('student_name')
         ).join(
@@ -1150,7 +1224,7 @@ def send_attendance_to_doctor():
             Attendance.location_verified == True
         )
         
-        # إذا تم تحديد تاريخ، قم بتصفية النتائج حسب التاريخ
+        # If date is specified, filter results by date
         if date_str:
             try:
                 filter_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -1161,10 +1235,10 @@ def send_attendance_to_doctor():
                     'message': 'Invalid date format, use YYYY-MM-DD'
                 }), 400
         
-        # الحصول على النتائج
+        # Get results
         attendances = query.all()
         
-        # تنسيق البيانات للإرجاع
+        # Format data for return
         attendance_records = []
         for attendance, student_name in attendances:
             attendance_records.append({
@@ -1174,7 +1248,7 @@ def send_attendance_to_doctor():
                 'timestamp': attendance.timestamp.strftime("%H:%M:%S")
             })
         
-        # ارجع البيانات للدكتور
+        # Return data to doctor
         return jsonify({
             'success': True,
             'course_id': course_id,
@@ -1188,13 +1262,13 @@ def send_attendance_to_doctor():
             'message': f'Server error: {str(e)}'
         }), 500
 
-# واجهة API جديدة للدكتور لعرض سجلات الحضور
+# New API interface for doctor to view attendance records
 @app.route('/doctor/course-attendance', methods=['GET'])
 def get_course_attendance():
     try:
         course_id = request.args.get('course_id')
-        date_str = request.args.get('date')  # اختياري
-        student_id = request.args.get('student_id')  # معرف الطالب للبحث (اختياري)
+        date_str = request.args.get('date')  # Optional
+        student_id = request.args.get('student_id')  # Student ID for search (optional)
         
         if not course_id:
             return jsonify({
@@ -1202,7 +1276,7 @@ def get_course_attendance():
                 'message': 'Missing course_id parameter'
             }), 400
         
-        # الحصول على المقرر
+        # Get course
         course = Course.query.get(course_id)
         if not course:
             return jsonify({
@@ -1210,7 +1284,7 @@ def get_course_attendance():
                 'message': 'Course not found'
             }), 404
         
-        # تحديد التاريخ للتصفية
+        # Determine date for filtering
         if date_str:
             try:
                 filter_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -1222,15 +1296,15 @@ def get_course_attendance():
         else:
             filter_date = datetime.datetime.now().date()
         
-        # الحصول على جميع الطلاب المسجلين في المقرر
+        # Get all students enrolled in the course
         enrollments = StudentCourse.query.filter_by(course_id=course_id).all()
         student_ids = [enrollment.student_id for enrollment in enrollments]
         
-        # تصفية حسب الطالب إذا تم تحديد معرف طالب
+        # Filter by student ID if provided
         if student_id:
             try:
                 student_id_int = int(student_id)
-                # التحقق من أن الطالب مسجل في المقرر
+                # Check if student is enrolled in the course
                 if student_id_int in student_ids:
                     student_ids = [student_id_int]
                 else:
@@ -1244,10 +1318,10 @@ def get_course_attendance():
                     'message': 'Invalid student_id format'
                 }), 400
         
-        # الحصول على تفاصيل الطلاب
+        # Get student details
         students = User.query.filter(User.id.in_(student_ids)).all()
         
-        # الحصول على سجلات الحضور لليوم المحدد
+        # Get attendance records for the specified date
         attendance_records = Attendance.query.filter(
             Attendance.course_id == course_id,
             Attendance.date == filter_date,
@@ -1255,31 +1329,31 @@ def get_course_attendance():
             Attendance.location_verified == True
         ).all()
         
-        # إنشاء قاموس للطلاب الحاضرين لسهولة البحث
+        # Create a dictionary for easy lookup of attended students
         attended_students = {record.student_id: record for record in attendance_records}
         
-        # تنسيق البيانات للإرجاع
+        # Format data for return
         attendance_data = []
         for student in students:
-            # التحقق مما إذا كان الطالب حاضراً
+            # Check if student is present
             is_present = student.id in attended_students
             attendance_record = attended_students.get(student.id)
             
             student_data = {
                 'student_id': student.id,
-                'student_number': student.student_id,  # رقم الطالب الدراسي
+                'student_number': student.student_id,  # Student number
                 'student_name': student.name,
                 'is_present': is_present,
                 'attendance_date': filter_date.strftime("%Y-%m-%d"),
             }
             
-            # إضافة وقت التسجيل إذا كان الطالب حاضراً
+            # Add attendance time if student is present
             if is_present and attendance_record:
                 student_data['attendance_time'] = attendance_record.timestamp.strftime("%H:%M:%S")
             
             attendance_data.append(student_data)
         
-        # حساب إحصائيات الحضور
+        # Calculate attendance statistics
         total_students = len(students)
         present_students = len(attended_students)
         absence_students = total_students - present_students
@@ -1334,21 +1408,21 @@ def kill_database_connections():
     except Exception as e:
         logger.error(f"Error killing database connections: {e}")
 
-# إضافة مسار جديد للتحقق من الوجه
+# Add new route for face verification
 @app.route('/attendance/verify-face', methods=['POST'])
 def verify_face():
     try:
         data = request.get_json()
         student_id = data.get('student_id')
         
-        # تحقق من وجود معرف الطالب
+        # Check for student ID
         if not student_id:
             return jsonify({
                 'success': False,
                 'message': 'Missing student_id'
             }), 400
         
-        # تسجيل التحقق من الوجه في قاعدة البيانات
+        # Record face verification in database
         face_recognition = FaceRecognition(
             student_id=student_id,
             timestamp=datetime.datetime.now()
@@ -1371,7 +1445,7 @@ def verify_face():
             'message': f'Server error: {str(e)}'
         }), 500
 
-# واجهة جديدة للحصول على تواريخ الحضور المسجلة للمقرر
+# New interface for doctor to get attendance dates
 @app.route('/doctor/course-attendance/dates', methods=['GET'])
 def get_course_attendance_dates():
     try:
@@ -1383,7 +1457,7 @@ def get_course_attendance_dates():
                 'message': 'Missing course_id parameter'
             }), 400
         
-        # التحقق من وجود المقرر
+        # Check if course exists
         course = Course.query.get(course_id)
         if not course:
             return jsonify({
@@ -1391,13 +1465,13 @@ def get_course_attendance_dates():
                 'message': 'Course not found'
             }), 404
         
-        # الحصول على التواريخ الفريدة لسجلات الحضور للمقرر
+        # Get unique attendance dates for the course
         dates = db.session.query(Attendance.date)\
             .filter(Attendance.course_id == course_id)\
             .distinct()\
             .all()
         
-        # تنسيق التواريخ كقائمة سلاسل نصية
+        # Format dates as strings
         date_strings = [date[0].strftime("%Y-%m-%d") for date in dates]
         
         return jsonify({
@@ -1417,24 +1491,24 @@ def get_course_attendance_dates():
 @app.route('/attendance/course/<int:course_id>/date/<date>', methods=['GET'])
 def get_course_attendance_by_date(course_id, date):
     try:
-        # التحقق من وجود المقرر
+        # Check if course exists
         course = Course.query.get(course_id)
         if not course:
             return jsonify({'success': False, 'message': 'Course not found'}), 404
         
-        # تحويل التاريخ إلى كائن date
+        # Convert date to date object
         try:
             attendance_date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
         except ValueError:
             return jsonify({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
         
-        # الحصول على سجلات الحضور لهذا المقرر والتاريخ
+        # Get attendance records for the course and date
         attendance_records = Attendance.query.filter_by(
             course_id=course_id,
             date=attendance_date
         ).all()
         
-        # تحويل البيانات إلى تنسيق JSON
+        # Format data for return
         attendance_data = []
         for record in attendance_records:
             student = User.query.get(record.student_id)
@@ -1450,13 +1524,108 @@ def get_course_attendance_by_date(course_id, date):
         
         return jsonify({
             'success': True,
-            'message': 'تم جلب سجلات الحضور بنجاح',
+            'message': 'Attendance records retrieved successfully',
             'attendance_records': attendance_data
         })
     
     except Exception as e:
         app.logger.error(f"Error getting attendance records by date: {e}")
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@app.route('/doctor/course-attendance/summary', methods=['GET'])
+def get_course_attendance_summary():
+    try:
+        course_id = request.args.get('course_id')
+        
+        if not course_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing course_id parameter'
+            }), 400
+        
+        # Check if course exists
+        course = Course.query.get(course_id)
+        if not course:
+            return jsonify({
+                'success': False,
+                'message': 'Course not found'
+            }), 404
+        
+        # Get all students enrolled in the course
+        enrollments = StudentCourse.query.filter_by(course_id=course_id).all()
+        student_ids = [enrollment.student_id for enrollment in enrollments]
+        
+        # Get student details
+        students = User.query.filter(User.id.in_(student_ids)).all()
+        
+        # Get unique lecture dates (distinct dates with attendance records)
+        lecture_dates = db.session.query(Attendance.date)\
+            .filter(Attendance.course_id == course_id)\
+            .distinct()\
+            .all()
+        
+        total_lecture_days = len(lecture_dates)
+        
+        # Prepare student attendance summary
+        students_summary = []
+        
+        for student in students:
+            # Get all attendance records for the student and course
+            attendance_records = Attendance.query.filter(
+                Attendance.course_id == course_id,
+                Attendance.student_id == student.id,
+                Attendance.face_verified == True,
+                Attendance.location_verified == True
+            ).all()
+            
+            # Calculate attendance and absence counts
+            attendance_count = len(attendance_records)
+            absence_count = total_lecture_days - attendance_count
+            
+            # Calculate attendance percentage
+            attendance_percentage = (attendance_count / total_lecture_days * 100) if total_lecture_days > 0 else 0
+            
+            # Add student data and attendance statistics
+            student_data = {
+                'student_id': student.id,
+                'student_number': student.student_id,  # Student number
+                'student_name': student.name,
+                'total_lectures': total_lecture_days,
+                'attendance_count': attendance_count,
+                'absence_count': absence_count,
+                'attendance_percentage': round(attendance_percentage, 2)
+            }
+            
+            students_summary.append(student_data)
+        
+        # Calculate overall attendance statistics for the course
+        total_students = len(students)
+        
+        return jsonify({
+            'success': True,
+            'course_id': course_id,
+            'course_name': course.name,
+            'course_code': course.code,
+            'total_students': total_students,
+            'total_lectures': total_lecture_days,
+            'students': students_summary
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting course attendance summary: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Server error: {str(e)}'
+        }), 500
+
+# استيراد وظيفة إعادة تعيين كلمة المرور
+try:
+    from reset_password import reset_password
+    # إضافة وظيفة إعادة تعيين كلمة المرور إلى التطبيق
+    app.add_url_rule('/reset-password', view_func=reset_password, methods=['POST'])
+    logger.info("Password reset endpoint registered successfully")
+except ImportError as e:
+    logger.error(f"Failed to import reset_password module: {e}")
 
 if __name__ == '__main__':
     try:

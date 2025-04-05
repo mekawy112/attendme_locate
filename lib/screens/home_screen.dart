@@ -4,15 +4,19 @@ import '../services/api_service.dart';
 import '../services/course_service.dart';
 import 'attendance_options_screen.dart';
 import 'course_detail_screen.dart';
+import 'attendance_notifications_screen.dart';
 import '../core/theming/colors.dart';
 import '../widgets/application_app_bar.dart';
 import '../widgets/course_loading_widget.dart';
 import '../widgets/welcome_text.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'face_rec_screen/DB/DatabaseHelper.dart';
 import 'face_rec_screen/RegistrationScreen.dart';
+import 'settings_screen.dart'; // Import SettingsScreen
 
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -27,11 +31,57 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _courses = [];
   bool _isLoading = true;
   final TextEditingController _courseCodeController = TextEditingController();
+  List<Map<String, dynamic>> _attendanceNotifications = [];
+  Map<String, List<Map<String, dynamic>>> _groupedNotifications = {};
+
+  // Bottom navigation bar state
+  int _selectedIndex = 0;
+
+  bool isFaceVerified = false;
+  bool isLocationVerified = false;
+
+  // Handle tapping on bottom navigation bar items
+  void _onItemTapped(int index) {
+    if (index == _selectedIndex) return; // Don't navigate if already on the selected tab
+    
+    if (index == 0) {
+      // Already on Home tab
+      setState(() {
+        _selectedIndex = 0;
+      });
+    } else if (index == 1) {
+      // Navigate to Attendances tab
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AttendanceNotificationsScreen(userData: widget.userData),
+        ),
+      );
+    } else if (index == 2) {
+      // Navigate to Settings tab
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SettingsScreen(userData: widget.userData),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    print("Home Screen init state called");
     _fetchCourses();
+    _createHardcodedNotifications();
+    
+    // Force sample notifications to appear for testing
+    Future.delayed(Duration(milliseconds: 500), () {
+      if (_groupedNotifications.isEmpty) {
+        print("No notifications displayed, trying again");
+        _createHardcodedNotifications();
+      }
+    });
   }
 
   Future<void> _fetchCourses() async {
@@ -151,8 +201,64 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _createHardcodedNotifications() {
+    // Today's date
+    DateTime today = DateTime.now();
+    String todayStr = DateFormat('yyyy-MM-dd').format(today);
+    
+    // Yesterday's date
+    DateTime yesterday = today.subtract(Duration(days: 1));
+    String yesterdayStr = DateFormat('yyyy-MM-dd').format(yesterday);
+    
+    // Create notification objects
+    List<Map<String, dynamic>> notifications = [
+      {
+        'student_id': widget.userData['id'].toString(),
+        'course_id': '101',
+        'course_name': 'Introduction to Computer Science',
+        'timestamp': today.subtract(Duration(hours: 2)).toIso8601String(),
+        'date': todayStr,
+        'already_recorded': false,
+      },
+      {
+        'student_id': widget.userData['id'].toString(),
+        'course_id': '102',
+        'course_name': 'Data Structures',
+        'timestamp': today.subtract(Duration(hours: 4)).toIso8601String(),
+        'date': todayStr,
+        'already_recorded': true,
+      },
+      {
+        'student_id': widget.userData['id'].toString(),
+        'course_id': '103',
+        'course_name': 'Database Systems',
+        'timestamp': yesterday.subtract(Duration(hours: 3)).toIso8601String(),
+        'date': yesterdayStr,
+        'already_recorded': false,
+      },
+    ];
+    
+    // Group notifications by date
+    Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (var notification in notifications) {
+      String date = notification['date'];
+      if (!grouped.containsKey(date)) {
+        grouped[date] = [];
+      }
+      grouped[date]!.add(notification);
+    }
+    
+    setState(() {
+      _attendanceNotifications = notifications;
+      _groupedNotifications = grouped;
+    });
+    
+    print("Created hardcoded notifications - ${notifications.length} items in ${grouped.length} groups");
+  }
+
   @override
   Widget build(BuildContext context) {
+    print("Building HomeScreen. Notifications: ${_attendanceNotifications.length}, Grouped: ${_groupedNotifications.length}");
     return Scaffold(
       appBar: buildApplicationAppBar(title: 'Home'),
       body: Padding(
@@ -161,9 +267,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             WelcomeText(userData: widget.userData),
-            SizedBox(
-              height: 10.sp,
-            ),
+            SizedBox(height: 10.sp),
+            
+            // Existing Courses Section
             _isLoading
                 ? CoursesLoadingWidget()
                 : Expanded(
@@ -238,6 +344,8 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         unselectedFontSize: 16,
         selectedFontSize: 18,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
         items: [
           BottomNavigationBarItem(
             icon: Icon(
@@ -250,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
               icon: Icon(Icons.calendar_month_sharp,
                   color: ColorsManager.darkBlueColor1, size: 32.sp),
-              label: 'Attendaces'),
+              label: 'Attendances'),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings,
                 color: ColorsManager.darkBlueColor1, size: 32.sp),

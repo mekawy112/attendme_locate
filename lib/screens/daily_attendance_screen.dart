@@ -79,21 +79,30 @@ class _DailyAttendanceScreenState extends State<DailyAttendanceScreen> {
       final attendanceData = jsonDecode(attendanceResponse.body);
       final attendanceRecords = List<Map<String, dynamic>>.from(attendanceData['records']);
 
-      // Mark attendance status for each student
+      // Create a Set to track unique student IDs that have been marked present
+      final Set<int> presentStudentIds = {};
+
+      // Mark attendance status for each student (only count once per day)
       _students = enrolledStudents.map((student) {
-        final isPresent = attendanceRecords.any(
-          (record) => record['student_id'] == student['id'] &&
+        final studentId = student['id'];
+        // Check if this student has already been marked present today
+        final hasAttendance = attendanceRecords.any((record) {
+          if (record['student_id'] == studentId &&
               record['face_verified'] == true &&
-              record['location_verified'] == true,
-        );
+              record['location_verified'] == true) {
+            return presentStudentIds.add(studentId); // Returns true only if ID wasn't already in set
+          }
+          return false;
+        });
+
         return {
           ...student,
-          'is_present': isPresent,
+          'is_present': hasAttendance,
         };
       }).toList();
 
-      // Update counts
-      _presentCount = _students.where((s) => s['is_present']).length;
+      // Update counts based on unique present students
+      _presentCount = presentStudentIds.length;
       _absentCount = _students.length - _presentCount;
 
       // Initialize filtered list

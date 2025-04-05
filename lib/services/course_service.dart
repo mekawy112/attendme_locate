@@ -307,4 +307,53 @@ class CourseService {
       };
     }
   }
+
+  // دالة جديدة للحصول على ملخص الحضور الإجمالي للمقرر
+  Future<Map<String, dynamic>> getCourseAttendanceSummary(int courseId) async {
+    try {
+      String url = '$baseUrl/doctor/course-attendance/summary?course_id=$courseId';
+      
+      print('Fetching attendance summary from: $url');
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+      
+      print('Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['success'] == true) {
+          return {
+            'success': true,
+            'course_id': data['course_id'],
+            'course_name': data['course_name'],
+            'course_code': data['course_code'],
+            'total_students': data['total_students'],
+            'total_lectures': data['total_lectures'],
+            'students': data['students'],
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Failed to fetch attendance summary',
+          };
+        }
+      } else {
+        final errorMessage = jsonDecode(response.body)['message'] ?? 'Failed to fetch attendance summary';
+        return {
+          'success': false,
+          'message': errorMessage,
+        };
+      }
+    } catch (e) {
+      print('Error fetching attendance summary: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e',
+      };
+    }
+  }
 }

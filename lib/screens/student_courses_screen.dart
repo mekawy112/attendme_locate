@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 
+import '../core/theming/colors.dart';
 import '../services/course_service.dart';
 import 'attendance_options_screen.dart' as attendanceOptions;
 import 'course_detail_screen.dart';
@@ -173,7 +174,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Courses'),
-        backgroundColor: Colors.blue.shade800,
+        backgroundColor: ColorsManager.darkBlueColor1,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -239,13 +240,13 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                             child: ElevatedButton(
                               onPressed: _isEnrolling ? null : _enrollInCourse,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue.shade800,
+                                backgroundColor: ColorsManager.darkBlueColor1,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
                               ),
                               child: _isEnrolling
                                   ? const CircularProgressIndicator(
-                                      color: Colors.white)
+                                      color: ColorsManager.whiteColor)
                                   : const Text(
                                       'Enroll',
                                       style: TextStyle(fontSize: 16),
@@ -266,7 +267,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                             'You are not enrolled in any courses yet',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey,
+                              color: ColorsManager.greyColor,
                             ),
                           ),
                         )
@@ -304,13 +305,13 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                                             course['code'],
                                             style: TextStyle(
                                               fontSize: 14,
-                                              color: Colors.grey[600],
+                                              color: ColorsManager.greyColor,
                                             ),
                                           ),
                                           IconButton(
                                             icon: const Icon(
                                                 Icons.delete_outline,
-                                                color: Colors.red),
+                                                color: ColorsManager.lightBrown),
                                             onPressed: () =>
                                                 _unenrollFromCourse(
                                                     course['id']),
@@ -332,7 +333,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                                             'No description available',
                                         style: TextStyle(
                                           fontSize: 14,
-                                          color: Colors.grey[800],
+                                          color: ColorsManager.darkGrayColor,
                                         ),
                                       ),
                                       const SizedBox(height: 16),
@@ -364,14 +365,14 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                                           }
                                         },
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.blue.shade800,
+                                          backgroundColor: ColorsManager.darkBlueColor1,
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 24, vertical: 12),
                                         ),
                                         child: const Text(
                                           'Take Attendance',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: ColorsManager.whiteColor,
                                             fontSize: 16,
                                           ),
                                         ),
