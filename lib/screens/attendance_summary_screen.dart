@@ -10,13 +10,14 @@ class AttendanceSummaryScreen extends StatefulWidget {
   final String courseName;
 
   const AttendanceSummaryScreen({
-    Key? key, 
+    Key? key,
     required this.courseId,
     this.courseName = "",
   }) : super(key: key);
 
   @override
-  State<AttendanceSummaryScreen> createState() => _AttendanceSummaryScreenState();
+  State<AttendanceSummaryScreen> createState() =>
+      _AttendanceSummaryScreenState();
 }
 
 class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
@@ -28,18 +29,18 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
   String _courseCode = '';
   int _totalStudents = 0;
   int _totalLectures = 0;
-  
+
   final CourseService _courseService = CourseService();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  
+
   @override
   void initState() {
     super.initState();
     _courseName = widget.courseName;
     _fetchAttendanceSummary();
   }
-  
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -53,36 +54,21 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
     });
 
     try {
-      final response = await _courseService.getCourseAttendanceSummary(widget.courseId);
+      final response = await _courseService.getCourseAttendanceSummary(
+        widget.courseId,
+      );
 
       if (response['success']) {
-        // Process the students data to ensure unique daily attendance
-        final List<Map<String, dynamic>> rawStudents = List<Map<String, dynamic>>.from(response['students'] ?? []);
-        
-        // Create a map to store processed student attendance
-        final Map<String, Map<String, dynamic>> processedStudents = {};
-        
-        // Process each student's attendance
-        for (var student in rawStudents) {
-          final studentId = student['student_number'].toString();
-          final attendanceDate = student['attendance_date']?.toString().split('T')[0];
-          
-          if (!processedStudents.containsKey(studentId)) {
-            // Initialize student record with basic info
-            processedStudents[studentId] = {
-              'student_name': student['student_name'],
-              'student_number': student['student_number'],
-              'attendance_count': 0,
-              'attendance_dates': <String>{}, // Using Set to store unique dates
-            };
-          }
-          
-          // Only count attendance once per day
-          if (attendanceDate != null) {
-            processedStudents[studentId]!['attendance_dates'].add(attendanceDate);
-            processedStudents[studentId]!['attendance_count'] = 
-                processedStudents[studentId]!['attendance_dates'].length;
-          }
+        // Get the students data directly from the response
+        final List<Map<String, dynamic>> students =
+            List<Map<String, dynamic>>.from(response['students'] ?? []);
+
+        // Print the response for debugging
+        print('Response from server: $response');
+
+        // Print each student's data for debugging
+        for (var student in students) {
+          print('Student data: $student');
         }
 
         setState(() {
@@ -90,12 +76,19 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
           _courseCode = response['course_code'] ?? '';
           _totalStudents = response['total_students'] ?? 0;
           _totalLectures = response['total_lectures'] ?? 0;
-          // Convert processed students back to list
-          _students = processedStudents.values.map((student) => {
-            'student_name': student['student_name'],
-            'student_number': student['student_number'],
-            'attendance_count': student['attendance_count'],
-          }).toList();
+
+          // Use the students data directly
+          _students =
+              students
+                  .map(
+                    (student) => {
+                      'student_name': student['student_name'],
+                      'student_number': student['student_number'],
+                      'attendance_count': student['attendance_count'] ?? 0,
+                    },
+                  )
+                  .toList();
+
           _isLoading = false;
         });
       } else {
@@ -114,13 +107,15 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
     if (_searchQuery.isEmpty) {
       return _students;
     }
-    
+
     return _students.where((student) {
-      final studentName = student['student_name']?.toString().toLowerCase() ?? '';
-      final studentNumber = student['student_number']?.toString().toLowerCase() ?? '';
-      
-      return studentName.contains(_searchQuery.toLowerCase()) || 
-             studentNumber.contains(_searchQuery.toLowerCase());
+      final studentName =
+          student['student_name']?.toString().toLowerCase() ?? '';
+      final studentNumber =
+          student['student_number']?.toString().toLowerCase() ?? '';
+
+      return studentName.contains(_searchQuery.toLowerCase()) ||
+          studentNumber.contains(_searchQuery.toLowerCase());
     }).toList();
   }
 
@@ -141,9 +136,10 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _hasError
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _hasError
               ? Center(child: Text('Error: $_errorMessage'))
               : _buildSummaryScreen(),
     );
@@ -154,7 +150,7 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
       children: [
         // Course summary statistics
         _buildCourseSummary(),
-        
+
         // Student search
         Padding(
           padding: const EdgeInsets.all(8.0),
@@ -179,7 +175,7 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
             },
           ),
         ),
-        
+
         // Table header
         Container(
           color: Colors.grey.shade200,
@@ -211,13 +207,13 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
             ],
           ),
         ),
-        
+
         // Student list
         Expanded(child: _buildStudentsList()),
       ],
     );
   }
-  
+
   Widget _buildCourseSummary() {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -253,24 +249,18 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
       ),
     );
   }
-  
+
   Widget _buildSummaryItem(String title, String value) {
     return Column(
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
       ],
     );
@@ -286,7 +276,7 @@ class _AttendanceSummaryScreenState extends State<AttendanceSummaryScreen> {
       itemBuilder: (context, index) {
         final student = _filteredStudents[index];
         final int attendanceCount = student['attendance_count'] ?? 0;
-        
+
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           child: Padding(
