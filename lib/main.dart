@@ -1,6 +1,7 @@
 import 'package:attend_me_locate/screens/course_detail_screen.dart';
 import 'package:attend_me_locate/screens/splash_screen.dart';
 import 'package:attend_me_locate/services/auth_services.dart';
+import 'package:attend_me_locate/services/api_service.dart';
 import 'package:attend_me_locate/widgets/category_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart'; // Add this import
@@ -8,7 +9,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'core/theming/colors.dart';
-
 
 void main() {
   runApp(const MyApp());
@@ -33,10 +33,11 @@ class MyApp extends StatelessWidget {
             if (settings.name == '/courseDetail') {
               final args = settings.arguments as Map<String, dynamic>;
               return MaterialPageRoute(
-                builder: (context) => CourseDetailScreen(
-                  course: args['course'],
-                  studentData: args['studentData'],
-                ),
+                builder:
+                    (context) => CourseDetailScreen(
+                      course: args['course'],
+                      studentData: args['studentData'],
+                    ),
               );
             }
             return null;
@@ -89,17 +90,13 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ColorsManager.darkBlueColor1,
-      appBar: AppBar(
-        title: const Text('Attendance'),
-      ),
+      appBar: AppBar(title: const Text('Attendance')),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
-              decoration: BoxDecoration(
-                color: ColorsManager.darkBlueColor1,
-              ),
+              decoration: BoxDecoration(color: ColorsManager.darkBlueColor1),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -131,15 +128,14 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             // Pass the user data to CategoryCard
-            CategoryCard(
-              userData: _userData,
-            ),
+            CategoryCard(userData: _userData),
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : const Placeholder(), // Replace with AttendanceScreen() after defining or importing it
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : const Placeholder(), // Replace with AttendanceScreen() after defining or importing it
     );
   }
 }
@@ -161,7 +157,7 @@ class _DataListState extends State<DataList> {
   }
 
   fetchData() async {
-    final response = await http.get(Uri.parse('http://localhost:5000/data'));
+    final response = await http.get(Uri.parse('${ApiService.baseUrl}/data'));
     if (response.statusCode == 200) {
       setState(() {
         data = json.decode(response.body);
@@ -176,9 +172,7 @@ class _DataListState extends State<DataList> {
     return ListView.builder(
       itemCount: data.length,
       itemBuilder: (context, index) {
-        return ListTile(
-          title: Text(data[index]['columnName']),
-        );
+        return ListTile(title: Text(data[index]['columnName']));
       },
     );
   }

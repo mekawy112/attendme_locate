@@ -6,7 +6,7 @@ import '../utils/api_exception.dart';
 
 class ApiService {
   // المصدر المركزي لعنوان IP - قم بتغيير هذا العنوان فقط عند الحاجة
-  static const String baseUrl = 'http://192.168.1.9:5000';
+  static const String baseUrl = 'http://192.168.1.10:5000';
 
   Future<List<dynamic>> fetchData() async {
     try {
@@ -34,10 +34,7 @@ class ApiService {
       final response = await http.post(
         Uri.parse('$baseUrl/data'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'name': name,
-          'location': location,
-        }),
+        body: json.encode({'name': name, 'location': location}),
       );
       if (response.statusCode != 201) {
         throw Exception('Failed to post data: ${response.statusCode}');
@@ -97,10 +94,7 @@ class _DataListState extends State<DataList> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text('Error: $error'),
-            ElevatedButton(
-              onPressed: fetchData,
-              child: const Text('Retry'),
-            ),
+            ElevatedButton(onPressed: fetchData, child: const Text('Retry')),
           ],
         ),
       );
@@ -111,9 +105,7 @@ class _DataListState extends State<DataList> {
       child: ListView.builder(
         itemCount: data.length,
         itemBuilder: (context, index) {
-          return ListTile(
-            title: Text(data[index]['columnName']),
-          );
+          return ListTile(title: Text(data[index]['columnName']));
         },
       ),
     );

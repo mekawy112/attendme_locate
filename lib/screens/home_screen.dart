@@ -5,6 +5,7 @@ import '../services/course_service.dart';
 import 'attendance_options_screen.dart';
 import 'course_detail_screen.dart';
 import 'attendance_notifications_screen.dart';
+import 'student_attendance_screen.dart';
 import '../core/theming/colors.dart';
 import '../widgets/application_app_bar.dart';
 import '../widgets/course_loading_widget.dart';
@@ -42,8 +43,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Handle tapping on bottom navigation bar items
   void _onItemTapped(int index) {
-    if (index == _selectedIndex) return; // Don't navigate if already on the selected tab
-    
+    if (index == _selectedIndex)
+      return; // Don't navigate if already on the selected tab
+
     if (index == 0) {
       // Already on Home tab
       setState(() {
@@ -54,7 +56,8 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => AttendanceNotificationsScreen(userData: widget.userData),
+          builder:
+              (context) => StudentAttendanceScreen(userData: widget.userData),
         ),
       );
     } else if (index == 2) {
@@ -74,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
     print("Home Screen init state called");
     _fetchCourses();
     _createHardcodedNotifications();
-    
+
     // Force sample notifications to appear for testing
     Future.delayed(Duration(milliseconds: 500), () {
       if (_groupedNotifications.isEmpty) {
@@ -86,8 +89,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchCourses() async {
     try {
-      final courses =
-      await CourseService().getStudentCourses(widget.userData['id']);
+      final courses = await CourseService().getStudentCourses(
+        widget.userData['id'],
+      );
       setState(() {
         _courses = courses['courses'];
         _isLoading = false;
@@ -140,10 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     } finally {
       setState(() {
@@ -168,7 +169,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // API call to check if the face is already registered
       final response = await http.get(
         Uri.parse(
-            '${ApiService.baseUrl}/face/check-registration/${widget.userData['id']}'),
+          '${ApiService.baseUrl}/face/check-registration/${widget.userData['id']}',
+        ),
       );
 
       final result = jsonDecode(response.body);
@@ -186,8 +188,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                RegistrationScreen(studentData: widget.userData),
+            builder:
+                (context) => RegistrationScreen(studentData: widget.userData),
           ),
         );
       }
@@ -205,11 +207,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // Today's date
     DateTime today = DateTime.now();
     String todayStr = DateFormat('yyyy-MM-dd').format(today);
-    
+
     // Yesterday's date
     DateTime yesterday = today.subtract(Duration(days: 1));
     String yesterdayStr = DateFormat('yyyy-MM-dd').format(yesterday);
-    
+
     // Create notification objects
     List<Map<String, dynamic>> notifications = [
       {
@@ -237,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'already_recorded': false,
       },
     ];
-    
+
     // Group notifications by date
     Map<String, List<Map<String, dynamic>>> grouped = {};
     for (var notification in notifications) {
@@ -247,18 +249,22 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       grouped[date]!.add(notification);
     }
-    
+
     setState(() {
       _attendanceNotifications = notifications;
       _groupedNotifications = grouped;
     });
-    
-    print("Created hardcoded notifications - ${notifications.length} items in ${grouped.length} groups");
+
+    print(
+      "Created hardcoded notifications - ${notifications.length} items in ${grouped.length} groups",
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    print("Building HomeScreen. Notifications: ${_attendanceNotifications.length}, Grouped: ${_groupedNotifications.length}");
+    print(
+      "Building HomeScreen. Notifications: ${_attendanceNotifications.length}, Grouped: ${_groupedNotifications.length}",
+    );
     return Scaffold(
       appBar: buildApplicationAppBar(title: 'Home'),
       body: Padding(
@@ -268,76 +274,80 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             WelcomeText(userData: widget.userData),
             SizedBox(height: 10.sp),
-            
+
             // Existing Courses Section
             _isLoading
                 ? CoursesLoadingWidget()
                 : Expanded(
-              child: GridView.builder(
-                itemCount: _courses.length,
-                padding: EdgeInsets.symmetric(horizontal: 15.w),
-                gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 1.1,
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                ),
-                itemBuilder: (context, i) {
-                  final course = _courses[i];
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CourseDetailScreen(
-                            course: course,
-                            studentData: widget
-                                .userData, // Pass user data as student data
+                  child: GridView.builder(
+                    itemCount: _courses.length,
+                    padding: EdgeInsets.symmetric(horizontal: 15.w),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 1.1,
+                          crossAxisSpacing: 15,
+                          mainAxisSpacing: 15,
+                        ),
+                    itemBuilder: (context, i) {
+                      final course = _courses[i];
+                      return InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => CourseDetailScreen(
+                                    course: course,
+                                    studentData:
+                                        widget
+                                            .userData, // Pass user data as student data
+                                  ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 15.w,
+                            vertical: 20.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: ColorsManager.blueColor,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 2,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                course['name'],
+                                style: TextStyle(
+                                  fontSize: 18.sp,
+                                  color: ColorsManager.darkBlueColor1,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              SizedBox(height: 5.h),
+                              Text(
+                                course['code'],
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: ColorsManager.darkBlueColor1,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       );
                     },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 15.w, vertical: 20.h),
-                      decoration: BoxDecoration(
-                        color: ColorsManager.blueColor,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 2,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            course['name'],
-                            style: TextStyle(
-                              fontSize: 18.sp,
-                              color: ColorsManager.darkBlueColor1,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(height: 5.h),
-                          Text(
-                            course['code'],
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              color: ColorsManager.darkBlueColor1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+                  ),
+                ),
           ],
         ),
       ),
@@ -356,14 +366,21 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Home',
           ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month_sharp,
-                  color: ColorsManager.darkBlueColor1, size: 32.sp),
-              label: 'Attendances'),
+            icon: Icon(
+              Icons.calendar_month_sharp,
+              color: ColorsManager.darkBlueColor1,
+              size: 32.sp,
+            ),
+            label: 'Attendance',
+          ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings,
-                color: ColorsManager.darkBlueColor1, size: 32.sp),
+            icon: Icon(
+              Icons.settings,
+              color: ColorsManager.darkBlueColor1,
+              size: 32.sp,
+            ),
             label: 'Settings',
-          )
+          ),
         ],
       ),
       floatingActionButton: Column(
@@ -375,10 +392,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => RegistrationScreen(
-                    studentId: widget.userData['id'].toString(),
-                    studentData: widget.userData,
-                  ),
+                  builder:
+                      (context) => RegistrationScreen(
+                        studentId: widget.userData['id'].toString(),
+                        studentData: widget.userData,
+                      ),
                 ),
               );
             },
@@ -398,31 +416,32 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('Add Course'),
-                  content: TextField(
-                    controller: _courseCodeController,
-                    decoration: InputDecoration(
-                      labelText: 'Enter course code',
-                      border: OutlineInputBorder(),
+                builder:
+                    (context) => AlertDialog(
+                      title: Text('Add Course'),
+                      content: TextField(
+                        controller: _courseCodeController,
+                        decoration: InputDecoration(
+                          labelText: 'Enter course code',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            _enrollInCourse();
+                            Navigator.of(context).pop();
+                          },
+                          child: Text('Add'),
+                        ),
+                      ],
                     ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: Text('Cancel'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        _enrollInCourse();
-                        Navigator.of(context).pop();
-                      },
-                      child: Text('Add'),
-                    ),
-                  ],
-                ),
               );
             },
             backgroundColor: ColorsManager.blueColor,

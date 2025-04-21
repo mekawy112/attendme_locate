@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# Agregar middleware para registrar todas las solicitudes
+@app.before_request
+def log_request_info():
+    logger.info(f"Request from {request.remote_addr}: {request.method} {request.path}")
+    logger.debug(f"Headers: {request.headers}")
+
 # إعداد قاعدة البيانات
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
@@ -1872,8 +1878,37 @@ def get_attendance(lecture_id):
     # إعادة استجابة JSON تحتوي على تفاصيل الطلاب، حالة الحضور، والعدد
     pass
 
+# Función para obtener las interfaces de red disponibles
+def get_network_interfaces():
+    import socket
+
+    interfaces = {}
+    try:
+        # Obtener el nombre del host
+        hostname = socket.gethostname()
+        # Obtener la dirección IP local
+        local_ip = socket.gethostbyname(hostname)
+        interfaces[hostname] = local_ip
+
+        # Intentar obtener todas las direcciones IP
+        try:
+            all_ips = socket.getaddrinfo(hostname, None)
+            for ip in all_ips:
+                if ip[0] == socket.AF_INET:  # Solo IPv4
+                    interfaces[f"{hostname}_{ip[4][0]}"] = ip[4][0]
+        except Exception as e:
+            logger.error(f"Error getting all IPs: {e}")
+    except Exception as e:
+        logger.error(f"Error getting network interfaces: {e}")
+
+    return interfaces
+
 if __name__ == '__main__':
     try:
+        # Mostrar información de las interfaces de red
+        interfaces = get_network_interfaces()
+        logger.info(f"Available network interfaces: {interfaces}")
+
         # Kill existing connections first
         kill_database_connections()
 
@@ -1898,6 +1933,7 @@ if __name__ == '__main__':
         scheduler.start()
 
         # Run the application
+        logger.info("Starting server on 0.0.0.0:5000")
         app.run(host='0.0.0.0', debug=True, port=5000, threaded=True)
 
     except Exception as e:

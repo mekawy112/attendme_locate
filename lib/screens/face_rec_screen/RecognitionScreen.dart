@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:io';
@@ -75,7 +76,9 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
   Future<void> _initRecognizer() async {
     try {
       await recognizer.loadRegisteredFaces();
-      print('Recognizer initialized with ${recognizer.registered.length} registered faces');
+      print(
+        'Recognizer initialized with ${recognizer.registered.length} registered faces',
+      );
     } catch (e) {
       print('Error initializing recognizer: $e');
     }
@@ -83,7 +86,13 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
 
   // Capture image from camera
   _imgFromCamera() async {
-    XFile? pickedFile = await imagePicker.pickImage(source: ImageSource.camera);
+    XFile? pickedFile = await imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 100,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      preferredCameraDevice: CameraDevice.front,
+    );
     if (pickedFile != null) {
       _image = File(pickedFile.path);
       final data = await _image!.readAsBytes();
@@ -98,7 +107,9 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
 
   // Get image from gallery
   _imgFromGallery() async {
-    XFile? pickedFile = await imagePicker.pickImage(source: ImageSource.gallery);
+    XFile? pickedFile = await imagePicker.pickImage(
+      source: ImageSource.gallery,
+    );
     if (pickedFile != null) {
       _image = File(pickedFile.path);
       final data = await _image!.readAsBytes();
@@ -113,50 +124,55 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
 
   // Face detection function
   doFaceDetection() async {
+    setState(() {
+      faces = []; // Clear previous faces
+    });
+
     // Check that _image is not null before continuing
     if (_image != null) {
-      // Remove rotation before detection
-      await removeRotation(_image!);
+      try {
+        // Remove rotation before detection
+        await removeRotation(_image!);
 
-      InputImage inputImage = InputImage.fromFile(_image!);
+        InputImage inputImage = InputImage.fromFile(_image!);
 
-      // Pass the image to face detector and get detected faces
-      faces = await faceDetector.processImage(inputImage);
+        // Pass the image to face detector and get detected faces
+        faces = await faceDetector.processImage(inputImage);
 
-      if (faces.isNotEmpty) {
-        for (Face face in faces) {
-          cropAndRegisterFace(face.boundingBox);
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (faces.isNotEmpty) {
+          print("Detected ${faces.length} faces");
+          setState(() {}); // Update UI to show face rectangles
+
+          for (Face face in faces) {
+            cropAndRegisterFace(face.boundingBox);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("No faces detected"),
               backgroundColor: Colors.red,
               behavior: SnackBarBehavior.floating,
-            )
+            ),
+          );
+        }
+      } catch (e) {
+        print("Error in face detection: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error detecting face: $e"),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
   }
 
-  // Crop face, extract embedding and show result
-  cropAndRegisterFace(Rect boundingBox) {
+  // Completely revised face recognition process
+  Future<void> cropAndRegisterFace(Rect boundingBox) async {
     try {
-      num left = boundingBox.left < 0 ? 0 : boundingBox.left;
-      num top = boundingBox.top < 0 ? 0 : boundingBox.top;
-      num right =
-      boundingBox.right > image!.width ? image!.width - 1 : boundingBox.right;
-      num bottom = boundingBox.bottom > image!.height
-          ? image!.height - 1
-          : boundingBox.bottom;
-      num width = right - left;
-      num height = bottom - top;
-
-      // Add debug information to know the values used
-      print("Face detection coordinates: Left: $left, Top: $top, Width: $width, Height: $height");
-
-      // Ensure image file exists before reading bytes
-      if (_image == null || !_image!.existsSync()) {
+      // Ensure we have a valid image
+      if (_image == null || !_image!.existsSync() || image == null) {
         print("Error: Image file doesn't exist or is null");
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -168,51 +184,51 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
         return;
       }
 
-      final bytes = _image!.readAsBytesSync();
+      // Extract coordinates for cropping
+      num left = boundingBox.left < 0 ? 0 : boundingBox.left;
+      num top = boundingBox.top < 0 ? 0 : boundingBox.top;
+      num right =
+          boundingBox.right > image!.width
+              ? image!.width - 1
+              : boundingBox.right;
+      num bottom =
+          boundingBox.bottom > image!.height
+              ? image!.height - 1
+              : boundingBox.bottom;
+      num width = right - left;
+      num height = bottom - top;
+
+      print(
+        "Face coordinates: Left: $left, Top: $top, Width: $width, Height: $height",
+      );
+
+      if (width <= 0 || height <= 0) {
+        print("Invalid face dimensions");
+        return;
+      }
+
+      // Read and decode the image
+      final bytes = await _image!.readAsBytes();
       img.Image? faceImg = img.decodeImage(bytes);
 
       if (faceImg == null) {
-        // Try alternative approach to decode image
-        try {
-          // Try with a different decoder or approach
-          Uint8List imageBytes = _image!.readAsBytesSync();
-          faceImg = img.decodeJpg(imageBytes) ?? img.decodePng(imageBytes);
-
-          if (faceImg == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Error: Could not decode image format"),
-                backgroundColor: Colors.red,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-            return;
-          }
-        } catch (decodeError) {
-          print("Secondary decode error: $decodeError");
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Error: Failed to process image"),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
-      }
-
-      // Add additional check for dimensions
-      if (width <= 0 || height <= 0 || left < 0 || top < 0 || left >= faceImg.width || top >= faceImg.height) {
-        print("Error: Invalid crop dimensions. Face coordinates: $left, $top, $width, $height. Image dimensions: ${faceImg.width}x${faceImg.height}");
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error: Invalid face dimensions detected"),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        print("Failed to decode image");
         return;
       }
+
+      // Crop the face - expanding the box by 10% to include more context
+      int expandedWidth = ((width) * 1.1).toInt();
+      int expandedHeight = ((height) * 1.1).toInt();
+
+      // Calculate center point
+      int centerX = (left + right).toInt() ~/ 2;
+      int centerY = (top + bottom).toInt() ~/ 2;
+
+      // Recalculate bounds with expansion
+      left = math.max(0, centerX - expandedWidth ~/ 2);
+      top = math.max(0, centerY - expandedHeight ~/ 2);
+      width = math.min(expandedWidth, faceImg.width - left);
+      height = math.min(expandedHeight, faceImg.height - top);
 
       img.Image croppedFace = img.copyCrop(
         faceImg,
@@ -222,40 +238,191 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
         height: height.toInt(),
       );
 
-      // Call the function that performs face recognition
-      Recognition recognition = recognizer.recognize(croppedFace, boundingBox);
+      // Apply image enhancements to improve recognition quality
+      croppedFace = _enhanceFaceImage(croppedFace);
 
-      // Add debug information for recognition
-      print("Recognition result: Name=${recognition.name}, Distance=${recognition.distance}");
+      // Resize to expected dimensions for the model
+      croppedFace = img.copyResize(croppedFace, width: 112, height: 112);
 
-      // Show result with option to re-register if result is weak or incorrect
-      showRecognitionResultDialog(
-        Uint8List.fromList(img.encodeBmp(croppedFace)),
-        recognition,
-      );
+      // Prepare a cropped face image for UI display
+      Uint8List croppedBytes = Uint8List.fromList(img.encodeBmp(croppedFace));
 
-      // If face is recognized successfully, show welcome message
-      if (recognition.name.isNotEmpty && recognition.name != "Unknown" && recognition.distance > 0.5) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Welcome ${recognition.name}! Face verification successful."),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
+      // Initialize recognition as null first
+      Recognition? recognition;
+
+      // Check if we have student ID to load specific face
+      if (_studentId != null && _studentId!.isNotEmpty) {
+        // First try to load the student's registered face from DB
+        print("Looking for registered face with ID: $_studentId");
+        recognition = await recognizer.loadFaceByStudentId(_studentId!);
+
+        if (recognition != null) {
+          print("Found registered face for student ID: $_studentId");
+
+          // Try multiple recognition attempts for better accuracy
+          List<Recognition> recognitionAttempts = [];
+          List<double> similarities = [];
+
+          // Perform multiple recognition attempts with slight variations
+          for (int i = 0; i < 5; i++) {
+            // Apply slightly different enhancements for each attempt
+            img.Image enhancedCopy = _applyRandomEnhancements(croppedFace, i);
+            Recognition attempt = recognizer.recognize(
+              enhancedCopy,
+              boundingBox,
+            );
+
+            if (attempt.embedding != null && recognition.embedding != null) {
+              double similarity = recognizer.calculateSimilarityScore(
+                recognition.embedding!,
+                attempt.embedding!,
+              );
+
+              recognitionAttempts.add(attempt);
+              similarities.add(similarity);
+              print(
+                "Recognition attempt #$i similarity: ${(similarity * 100).toStringAsFixed(1)}%",
+              );
+            }
+          }
+
+          if (recognitionAttempts.isNotEmpty) {
+            // Find the best matching attempt
+            int bestIndex = 0;
+            double bestSimilarity = similarities[0];
+
+            for (int i = 1; i < similarities.length; i++) {
+              if (similarities[i] > bestSimilarity) {
+                bestSimilarity = similarities[i];
+                bestIndex = i;
+              }
+            }
+
+            // Use the best match
+            recognition = Recognition(
+              recognition.name,
+              recognition.studentId,
+              recognitionAttempts[bestIndex].embedding,
+              bestSimilarity,
+            );
+
+            print(
+              "Best similarity with registered face: ${(bestSimilarity * 100).toStringAsFixed(1)}%",
+            );
+          } else {
+            print("All recognition attempts failed");
+          }
+        } else {
+          print("No registered face found for student ID: $_studentId");
+          // Fall back to general recognition
+          recognition = recognizer.recognize(croppedFace, boundingBox);
+        }
+      } else {
+        // No student ID, use normal recognition
+        recognition = recognizer.recognize(croppedFace, boundingBox);
+      }
+
+      // Show the result dialog with proper information
+      // recognition is always non-null at this point due to the way recognize() is implemented
+      showRecognitionResultDialog(croppedBytes, recognition);
+
+      // Usar el nuevo método de verificación dual para mayor seguridad
+      if (_studentId != null &&
+          _studentId!.isNotEmpty &&
+          recognition.embedding != null) {
+        // Verificar usando el método de comparación dual
+        bool isVerified = await recognizer.verifyFaceWithDualComparison(
+          recognition.embedding!,
+          _studentId!,
+          securityMargin:
+              0.30, // Margen de seguridad aumentado para evitar falsos positivos
         );
 
-        // Send face verification result to the server
-        _sendFaceVerificationToServer();
+        if (isVerified) {
+          print("Face verified with dual comparison method");
+          await _sendFaceVerificationToServer();
+        } else {
+          print("Face verification failed with dual comparison method");
+          // Mostrar mensaje de error
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "Face verification failed. This does not appear to be your face. Please try again with your own face.",
+                ),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      } else {
+        // Método anterior como fallback
+        double threshold =
+            (_studentId != null && _studentId!.isNotEmpty) ? 70.0 : 75.0;
+        double similarityPercentage = recognition.distance * 100;
+
+        // If face is recognized successfully, send verification to server
+        if (similarityPercentage >= threshold) {
+          print(
+            "Face verified with similarity: ${similarityPercentage.toStringAsFixed(1)}%",
+          );
+          await _sendFaceVerificationToServer();
+        }
       }
     } catch (e) {
       print("Error in cropAndRegisterFace: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error: Face processing failed"),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error processing face: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // New helper method to enhance face images for better recognition
+  img.Image _enhanceFaceImage(img.Image faceImage) {
+    try {
+      // Apply a series of enhancements to improve recognition
+      img.Image enhanced = faceImage;
+
+      // Adjust color properties to improve facial features
+      enhanced = img.adjustColor(
+        enhanced,
+        contrast: 1.3, // Increase contrast by 30%
+        brightness: 1.05, // Slight brightness increase
+        saturation: 0.9, // Slightly reduce saturation for more natural look
       );
+
+      return enhanced;
+    } catch (e) {
+      print("Error enhancing face image: $e");
+      return faceImage; // Return original on error
+    }
+  }
+
+  // Helper method to create slightly different image enhancements for multiple recognition attempts
+  img.Image _applyRandomEnhancements(img.Image baseImage, int seedModifier) {
+    try {
+      // Use seedModifier to create deterministic variations
+      double contrastMod = 1.2 + (seedModifier % 3) * 0.1; // 1.2, 1.3, 1.4
+      double brightnessMod =
+          1.0 + (seedModifier % 5) * 0.03; // 1.0, 1.03, 1.06, 1.09, 1.12
+
+      img.Image enhanced = img.adjustColor(
+        baseImage,
+        contrast: contrastMod,
+        brightness: brightnessMod,
+        saturation: 0.9 + (seedModifier % 3) * 0.1, // 0.9, 1.0, 1.1
+      );
+
+      return enhanced;
+    } catch (e) {
+      print("Error applying random enhancements: $e");
+      return baseImage; // Return original on error
     }
   }
 
@@ -287,7 +454,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
 
         // If we have a courseId, also send attendance verification
         if (widget.courseId != null && widget.courseId!.isNotEmpty) {
-          print('Sending attendance verification for course: ${widget.courseId}');
+          print('>>> Verifying attendance for Course ID: ${widget.courseId}');
 
           final attendanceResponse = await http.post(
             Uri.parse('${ApiService.baseUrl}/attendance/verify'),
@@ -296,6 +463,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
               'student_id': studentId,
               'course_id': widget.courseId,
               'face_verified': true,
+              'location_verified': true, // Añadir verificación de ubicación
             }),
           );
 
@@ -318,12 +486,39 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
     }
   }
 
+  // Método para limpiar todas las caras registradas
+  Future<void> _clearAllFaces() async {
+    try {
+      await databaseHelper.clearAllFaces();
+      await recognizer.loadRegisteredFaces();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("All registered faces have been deleted"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error clearing faces: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error clearing faces: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   // Remove rotation function (modifies image on file)
   removeRotation(File? inputImage) async {
     if (inputImage != null && inputImage.existsSync()) {
       try {
-        final img.Image? capturedImage =
-        img.decodeImage(await inputImage.readAsBytes());
+        final img.Image? capturedImage = img.decodeImage(
+          await inputImage.readAsBytes(),
+        );
         if (capturedImage != null) {
           final img.Image orientedImage = img.bakeOrientation(capturedImage);
           await inputImage.writeAsBytes(img.encodeJpg(orientedImage));
@@ -337,113 +532,134 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
     }
   }
 
-  // Show recognition result dialog
-  void showRecognitionResultDialog(Uint8List faceImage, Recognition recognition) {
-    // Calculate similarity percentage (ensure it's positive)
-    double similarityPercentage = recognition.distance.abs() * 100;
-    
-    // Check if similarity is within acceptable range (45% to 100%)
-    bool isValidSimilarity = similarityPercentage >= 45 && similarityPercentage <= 100;
+  // Show recognition result dialog with improved verification
+  void showRecognitionResultDialog(
+    Uint8List faceImage,
+    Recognition recognition,
+  ) {
+    // Calculate similarity percentage correctly
+    double similarityPercentage = recognition.distance * 100;
 
-    // Get the correct student ID from widget
-    String displayStudentId = widget.studentId ?? "unknown";
+    // Check if the distance value is valid
+    if (similarityPercentage > 100 ||
+        !similarityPercentage.isFinite ||
+        similarityPercentage < 0) {
+      print("Invalid similarity percentage: ${recognition.distance}");
+      similarityPercentage = 0.0; // Reset to 0% if invalid
+    }
+
+    // Adaptive threshold based on student ID presence
+    // If we have a specific student ID, we can use a lower threshold since we're verifying identity
+    // If no student ID, we need a higher threshold for general recognition
+    double threshold =
+        (_studentId != null && _studentId!.isNotEmpty) ? 70.0 : 75.0;
+    bool isValidSimilarity = similarityPercentage >= threshold;
+
+    // Get student ID for display
+    String displayStudentId = _studentId ?? "unknown";
+
+    // Debug logging
+    print(
+      'Recognition similarity: ${similarityPercentage.toStringAsFixed(1)}%',
+    );
+    print('Threshold used: $threshold%');
+    print('Valid recognition: $isValidSimilarity');
+    print('Student ID: $displayStudentId');
+    print('Recognized name: ${recognition.name}');
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Recognition Result'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.memory(
-                faceImage,
-                height: 200,
-                width: 200,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              isValidSimilarity
-                  ? 'Face verified successfully!'
-                  : 'Face verification failed!',
-              style: TextStyle(
-                color: isValidSimilarity ? Colors.green : Colors.red,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              isValidSimilarity
-                  ? 'Match rate: ${similarityPercentage.toStringAsFixed(1)}%'
-                  : 'Low match rate: ${similarityPercentage.toStringAsFixed(1)}%\nPlease try again.',
+      builder:
+          (context) => AlertDialog(
+            title: const Text(
+              'Recognition Result',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isValidSimilarity ? Colors.green : Colors.red,
-              ),
             ),
-            if (isValidSimilarity) ...[
-              const SizedBox(height: 10),
-              Text(
-                'Student ID: $displayStudentId',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(
+                    faceImage,
+                    height: 200,
+                    width: 200,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  isValidSimilarity
+                      ? 'Face verified successfully!'
+                      : 'Face verification failed!',
+                  style: TextStyle(
+                    color: isValidSimilarity ? Colors.green : Colors.red,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  isValidSimilarity
+                      ? 'Match rate: ${similarityPercentage.toStringAsFixed(1)}%'
+                      : 'Low match rate: ${similarityPercentage.toStringAsFixed(1)}%\nThis does not appear to be your face. Please try again with your own face.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isValidSimilarity ? Colors.green : Colors.red,
+                  ),
+                ),
+                if (isValidSimilarity) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Recognized: ${recognition.name}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  // Only return success if face verification is valid
+                  if (isValidSimilarity) {
+                    Navigator.of(context).pop(true);
+                  }
+                },
+                child: Text(
+                  'Close',
+                  style: TextStyle(
+                    color: isValidSimilarity ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
+              if (!isValidSimilarity)
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => RegistrationScreen(
+                              studentData: widget.studentData,
+                              studentId: _studentId,
+                            ),
+                      ),
+                    );
+                  },
+                  child: const Text('Register Again'),
+                ),
             ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              if (isValidSimilarity) {
-                // Pop dialog and return to previous screen with success status
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(true); // Return true to indicate successful verification
-                
-                // Show success message
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Face verification successful!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } else {
-                // Just close dialog if verification failed
-                Navigator.of(context).pop();
-              }
-            },
-            child: Text(
-              'Close',
-              style: TextStyle(
-                color: isValidSimilarity ? Colors.green : Colors.red,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
           ),
-          if (!isValidSimilarity)
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => RegistrationScreen(
-                      studentId: displayStudentId,
-                      studentData: widget.studentData,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('Register Again'),
-            ),
-        ],
-      ),
     );
   }
 
@@ -457,70 +673,74 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Face Registration", textAlign: TextAlign.center),
-        alignment: Alignment.center,
-        content: SizedBox(
-          height: 340,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-              Image.memory(croppedFace, width: 200, height: 200),
-              SizedBox(
-                width: 200,
-                child: TextField(
-                  controller: textEditingController,
-                  decoration: const InputDecoration(
-                    fillColor: Colors.white,
-                    filled: true,
-                    hintText: "Enter Name/ID",
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: () {
-                  // Obtener el studentId o usar un valor predeterminado
-                  String studentId = widget.studentData?['id'] ?? 'unknown';
-
-                  // Verificar que embedding no sea null
-                  if (recognition.embedding == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("No facial data available. Please try again."),
-                        backgroundColor: Colors.red,
-                        behavior: SnackBarBehavior.floating,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text("Face Registration", textAlign: TextAlign.center),
+            alignment: Alignment.center,
+            content: SizedBox(
+              height: 340,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 20),
+                  Image.memory(croppedFace, width: 200, height: 200),
+                  SizedBox(
+                    width: 200,
+                    child: TextField(
+                      controller: textEditingController,
+                      decoration: const InputDecoration(
+                        fillColor: Colors.white,
+                        filled: true,
+                        hintText: "Enter Name/ID",
                       ),
-                    );
-                    return;
-                  }
-
-                  recognizer.registerFaceInDB(
-                    textEditingController.text,
-                    recognition.embedding!, // Usar el operador ! para indicar que no es null
-                    studentId,
-                  );
-                  textEditingController.text = "";
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Face registered successfully"),
-                      backgroundColor: Colors.green,
-                      behavior: SnackBarBehavior.floating,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorsManager.darkBlueColor1,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text("Register"),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Obtener el studentId o usar un valor predeterminado
+                      String studentId = widget.studentData?['id'] ?? 'unknown';
+
+                      // Verificar que embedding no sea null
+                      if (recognition.embedding == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "No facial data available. Please try again.",
+                            ),
+                            backgroundColor: Colors.red,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
+
+                      recognizer.registerFaceInDB(
+                        textEditingController.text,
+                        recognition
+                            .embedding!, // Usar el operador ! para indicar que no es null
+                        studentId,
+                      );
+                      textEditingController.text = "";
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Face registered successfully"),
+                          backgroundColor: Colors.green,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ColorsManager.darkBlueColor1,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text("Register"),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -541,30 +761,31 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => AlertDialog(
-                  title: Text("Clear Face Database"),
-                  content: Text("Are you sure you want to delete all registered faces? This action cannot be undone."),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text("Cancel"),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        await databaseHelper.clearAllFaces();
-                        await recognizer.loadRegisteredFaces();
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("All registered faces have been deleted"),
-                            backgroundColor: Colors.green,
+                builder:
+                    (context) => AlertDialog(
+                      title: Text("Clear Face Database"),
+                      content: Text(
+                        "Are you sure you want to delete all registered faces? This action cannot be undone.",
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text("Cancel"),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            // Cerrar el diálogo inmediatamente
+                            Navigator.pop(context);
+                            // Luego realizar las operaciones asíncronas
+                            _clearAllFaces();
+                          },
+                          child: Text(
+                            "Delete All",
+                            style: TextStyle(color: Colors.red),
                           ),
-                        );
-                      },
-                      child: Text("Delete All", style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
               );
             },
           ),
@@ -574,48 +795,50 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       body: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(
-            height: 10.sp,
-          ),
-          Text('Take photo of your face', style: TextStyle(
+          SizedBox(height: 10.sp),
+          Text(
+            'Take photo of your face',
+            style: TextStyle(
               fontSize: 24,
               color: ColorsManager.darkBlueColor1,
-              fontWeight: FontWeight.bold
-          ),),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           _image != null && image != null
               ? Container(
-            height: 290,
-            margin: const EdgeInsets.only(
-              top: 0,
-              left: 30,
-              right: 30,
-              bottom: 120,
-            ),
-            child: FittedBox(
-              child: SizedBox(
-                width: image!.width.toDouble(),
-                height: image!.width.toDouble(),
-                child: CustomPaint(
-                  painter: FacePainter(facesList: faces, imageFile: image),
+                height: 290,
+                margin: const EdgeInsets.only(
+                  top: 0,
+                  left: 30,
+                  right: 30,
+                  bottom: 120,
+                ),
+                child: FittedBox(
+                  child: SizedBox(
+                    width: image!.width.toDouble(),
+                    height: image!.width.toDouble(),
+                    child: CustomPaint(
+                      painter: FacePainter(facesList: faces, imageFile: image),
+                    ),
+                  ),
+                ),
+              )
+              : Container(
+                margin: const EdgeInsets.only(top: 15),
+                child: Icon(
+                  Icons.person_pin_rounded,
+                  size: screenWidth - 120,
+                  color: ColorsManager.darkBlueColor1,
                 ),
               ),
-            ),
-          )
-              : Container(
-            margin: const EdgeInsets.only(top: 15),
-            child: Icon(
-              Icons.person_pin_rounded,
-              size: screenWidth - 120,
-              color: ColorsManager.darkBlueColor1,
-            ),
-          ),
           Container(height: 90),
-          AppButton(buttonText: 'Capture', onPressed: (){
-            _imgFromCamera();
-          }),
-          SizedBox(
-            height: 20.sp,
+          AppButton(
+            buttonText: 'Capture',
+            onPressed: () {
+              _imgFromCamera();
+            },
           ),
+          SizedBox(height: 20.sp),
           Container(
             padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
             child: Text(
@@ -643,10 +866,11 @@ class FacePainter extends CustomPainter {
     if (imageFile != null) {
       canvas.drawImage(imageFile!, Offset.zero, Paint());
     }
-    Paint p = Paint()
-      ..color = Colors.red
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
+    Paint p =
+        Paint()
+          ..color = Colors.red
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
     for (Face face in facesList) {
       canvas.drawRect(face.boundingBox, p);
     }

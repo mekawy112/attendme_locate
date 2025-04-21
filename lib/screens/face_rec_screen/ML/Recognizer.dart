@@ -245,7 +245,7 @@ class Recognizer {
             "Checking face for specific student ID: $studentId, Similarity: ${(similarity * 100).toStringAsFixed(1)}%",
           );
 
-          if (similarity >= 0.35) {
+          if (similarity >= 0.70) {
             // Lowered threshold for better detection rate
             return face.copyWith(distance: similarity);
           }
@@ -266,14 +266,14 @@ class Recognizer {
       }
     }
 
-    // Only return matches with minimum 35% similarity
-    if (ans != null && bestSimilarity >= 0.35) {
+    // Only return matches with minimum 70% similarity
+    if (ans != null && bestSimilarity >= 0.70) {
       return ans;
     }
     return null;
   }
 
-  // New method to calculate similarity in a consistent way
+  // Enhanced method to calculate similarity in a more accurate way
   double calculateSimilarityScore(List<double> emb1, List<double> emb2) {
     if (emb1.isEmpty || emb2.isEmpty) {
       print("ERROR: Empty embeddings can't be compared");
@@ -282,16 +282,20 @@ class Recognizer {
 
     // Use a combination of multiple comparison methods for better results
 
-    // 1. Cosine similarity
+    // 1. Cosine similarity - most important for face recognition
     double dotProduct = 0.0;
     double norm1 = 0.0;
     double norm2 = 0.0;
     int minLength = math.min(emb1.length, emb2.length);
 
+    // Pre-process embeddings to handle outliers
+    List<double> processedEmb1 = _preprocessEmbedding(emb1);
+    List<double> processedEmb2 = _preprocessEmbedding(emb2);
+
     for (int i = 0; i < minLength; i++) {
       // Add safeguards against NaN values
-      double val1 = emb1[i].isFinite ? emb1[i] : 0.0;
-      double val2 = emb2[i].isFinite ? emb2[i] : 0.0;
+      double val1 = processedEmb1[i].isFinite ? processedEmb1[i] : 0.0;
+      double val2 = processedEmb2[i].isFinite ? processedEmb2[i] : 0.0;
 
       dotProduct += val1 * val2;
       norm1 += val1 * val1;
@@ -309,7 +313,7 @@ class Recognizer {
     // 2. Euclidean distance (L2)
     double l2Distance = 0.0;
     for (int i = 0; i < minLength; i++) {
-      double diff = emb1[i] - emb2[i];
+      double diff = processedEmb1[i] - processedEmb2[i];
       l2Distance += diff * diff;
     }
     l2Distance = math.sqrt(l2Distance);
@@ -320,27 +324,116 @@ class Recognizer {
     // 3. Manhattan distance (L1) for additional comparison
     double l1Distance = 0.0;
     for (int i = 0; i < minLength; i++) {
-      l1Distance += (emb1[i] - emb2[i]).abs();
+      l1Distance += (processedEmb1[i] - processedEmb2[i]).abs();
     }
 
     // Convert L1 distance to similarity
     double l1Similarity = 1.0 / (1.0 + l1Distance / minLength);
 
-    // 4. Combined similarity score with weighted average
-    double combinedSimilarity =
-        (cosineSimilarity * 0.6) + (l2Similarity * 0.3) + (l1Similarity * 0.1);
+    // 4. Pearson correlation coefficient for additional robustness
+    double pearsonCorrelation = _calculatePearsonCorrelation(
+      processedEmb1,
+      processedEmb2,
+    );
+    // Convert to similarity score (0 to 1)
+    double pearsonSimilarity = (pearsonCorrelation + 1.0) / 2.0;
 
-    // Applying a boost to increase similarity scores within a valid range
-    double boostedSimilarity = math.pow(combinedSimilarity, 0.8).toDouble();
+    // 5. Combined similarity score with weighted average - give more weight to cosine similarity
+    double combinedSimilarity =
+        (cosineSimilarity * 0.65) +
+        (l2Similarity * 0.15) +
+        (l1Similarity * 0.1) +
+        (pearsonSimilarity * 0.1);
+
+    // Apply a sigmoid-like function to enhance the contrast between similar and dissimilar faces
+    double enhancedSimilarity = _applySigmoidEnhancement(combinedSimilarity);
 
     // Ensure result is between 0 and 1
-    return math.max(0.0, math.min(1.0, boostedSimilarity));
+    return math.max(0.0, math.min(1.0, enhancedSimilarity));
+  }
+
+  // Helper method to preprocess embeddings
+  List<double> _preprocessEmbedding(List<double> embedding) {
+    List<double> processed = List<double>.from(embedding);
+
+    // 1. Remove extreme outliers
+    double mean = 0.0;
+    for (double val in processed) {
+      if (val.isFinite) mean += val;
+    }
+    mean /= processed.length;
+
+    double stdDev = 0.0;
+    for (double val in processed) {
+      if (val.isFinite) stdDev += (val - mean) * (val - mean);
+    }
+    stdDev = math.sqrt(stdDev / processed.length);
+
+    // Replace values more than 3 standard deviations from mean
+    for (int i = 0; i < processed.length; i++) {
+      if (!processed[i].isFinite || (processed[i] - mean).abs() > 3 * stdDev) {
+        processed[i] = mean;
+      }
+    }
+
+    // 2. Normalize the embedding
+    double norm = 0.0;
+    for (double val in processed) {
+      norm += val * val;
+    }
+    norm = math.sqrt(norm);
+
+    if (norm > 0) {
+      for (int i = 0; i < processed.length; i++) {
+        processed[i] /= norm;
+      }
+    }
+
+    return processed;
+  }
+
+  // Calculate Pearson correlation coefficient
+  double _calculatePearsonCorrelation(List<double> x, List<double> y) {
+    if (x.length != y.length || x.isEmpty) return 0.0;
+
+    double sumX = 0.0, sumY = 0.0, sumXY = 0.0;
+    double sumX2 = 0.0, sumY2 = 0.0;
+    int n = x.length;
+
+    for (int i = 0; i < n; i++) {
+      sumX += x[i];
+      sumY += y[i];
+      sumXY += x[i] * y[i];
+      sumX2 += x[i] * x[i];
+      sumY2 += y[i] * y[i];
+    }
+
+    double numerator = n * sumXY - sumX * sumY;
+    double denominator = math.sqrt(
+      (n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY),
+    );
+
+    if (denominator == 0) return 0.0;
+    return numerator / denominator;
+  }
+
+  // Apply sigmoid-like enhancement to similarity scores
+  double _applySigmoidEnhancement(double similarity) {
+    // This function enhances the contrast between similar and dissimilar faces
+    // It makes high similarities higher and low similarities lower
+
+    // Center around 0.6 (typical threshold for face recognition)
+    double centered = similarity - 0.6;
+    // Apply sigmoid-like function
+    double enhanced = 1.0 / (1.0 + math.exp(-10.0 * centered));
+    // Scale back to 0-1 range
+    return enhanced * 0.8 + 0.2; // Ensure minimum score of 0.2
   }
 
   // Method to verify if multiple face embeddings belong to the same person
   Future<bool> verifyFaceMatching(
     List<List<double>> embeddings, {
-    double threshold = 0.35,
+    double threshold = 0.70,
   }) async {
     if (embeddings.length < 2) {
       return true; // Single image is always matching with itself
@@ -372,7 +465,7 @@ class Recognizer {
   // Method to verify if a face isn't already registered for someone else
   Future<bool> verifyNotRegistered(
     List<List<double>> embeddings, {
-    double threshold = 0.50,
+    double threshold = 0.70,
   }) async {
     if (registered.isEmpty || embeddings.isEmpty) {
       return true; // No registered faces, so no duplicates
@@ -400,6 +493,60 @@ class Recognizer {
     }
 
     return true;
+  }
+
+  // دالة للتحقق من الوجه باستخدام المقارنة المزدوجة
+  Future<bool> verifyFaceWithDualComparison(
+    List<double> faceEmbedding,
+    String studentId, {
+    double securityMargin = 0.15, // هامش أمان
+  }) async {
+    // 1. تحميل وجه الطالب المسجل
+    Recognition? studentFace = await loadFaceByStudentId(studentId);
+    if (studentFace == null || studentFace.embedding == null) {
+      print("No registered face found for student ID: $studentId");
+      return false;
+    }
+
+    // 2. حساب التشابه مع وجه الطالب
+    double similarityToStudent = calculateSimilarityScore(
+      faceEmbedding,
+      studentFace.embedding!,
+    );
+
+    // 3. حساب متوسط التشابه مع مجموعة "known faces"
+    double avgSimilarityToKnownFaces = 0.0;
+    int count = 0;
+
+    for (Recognition knownFace in registered) {
+      // تجاهل وجه الطالب نفسه
+      if (knownFace.studentId != studentId) {
+        double similarity = calculateSimilarityScore(
+          faceEmbedding,
+          knownFace.embedding!,
+        );
+        avgSimilarityToKnownFaces += similarity;
+        count++;
+      }
+    }
+
+    // حساب المتوسط إذا كان هناك وجوه معروفة
+    if (count > 0) {
+      avgSimilarityToKnownFaces /= count;
+    }
+
+    // 4. اتخاذ القرار
+    print(
+      "Similarity to student: ${(similarityToStudent * 100).toStringAsFixed(1)}%",
+    );
+    print(
+      "Avg similarity to known faces: ${(avgSimilarityToKnownFaces * 100).toStringAsFixed(1)}%",
+    );
+
+    // قبول الوجه إذا كان التشابه مع الطالب أعلى من التشابه مع الوجوه المعروفة بهامش أمان
+    return similarityToStudent > (avgSimilarityToKnownFaces + securityMargin) &&
+        similarityToStudent >=
+            0.80; // زيادة الحد الأدنى للتشابه مع الطالب من 0.70 إلى 0.80
   }
 
   findNearest(List<double> emb) {
@@ -445,8 +592,7 @@ class Recognizer {
         double similarity = calculateSimilarityScore(emb, entry.embedding!);
 
         print(
-          'Comparing with ${entry.name}: ' +
-              'similarity=${(similarity * 100).toStringAsFixed(1)}%',
+          'Comparing with ${entry.name}: similarity=${(similarity * 100).toStringAsFixed(1)}%',
         );
 
         if (similarity > bestSimilarity) {
@@ -461,19 +607,34 @@ class Recognizer {
         }
       }
 
+      // Apply minimum threshold for recognition
+      final double minimumThreshold = 0.55; // Increased from previous values
+      if (bestSimilarity < minimumThreshold) {
+        print(
+          'Best match similarity ${(bestSimilarity * 100).toStringAsFixed(1)}% is below threshold ${(minimumThreshold * 100).toStringAsFixed(1)}%',
+        );
+        return Pair("Unknown", "unknown", 0.0);
+      }
+
       // Check if best match is significantly better than second best (distinctiveness check)
       if (bestSimilarity > 0 && secondBestSimilarity > 0) {
         double distinctiveness = bestSimilarity / secondBestSimilarity;
         print('Best match distinctiveness ratio: $distinctiveness');
 
         // If the best match is not distinctive enough, apply a larger penalty
-        if (distinctiveness < 1.5 && bestSimilarity < 0.75) {
-          // Increased distinctiveness threshold to 1.5
-          bestSimilarity *= 0.7; // Increased penalty (previously 0.9)
+        if (distinctiveness < 1.3 && bestSimilarity < 0.7) {
+          // Adjusted thresholds for better performance
+          bestSimilarity *= 0.8; // Reduced penalty for borderline cases
           pair.distance = bestSimilarity;
           print(
             'Applying distinctiveness penalty, adjusted score: ${(bestSimilarity * 100).toStringAsFixed(1)}%',
           );
+
+          // If after penalty, the score falls below threshold, reject the match
+          if (bestSimilarity < minimumThreshold) {
+            print('After penalty, similarity is below threshold');
+            return Pair("Unknown", "unknown", 0.0);
+          }
         }
       }
     } catch (e) {
@@ -498,17 +659,28 @@ class Recognizer {
       await dbHelper!.init();
     }
 
-    // Primero verificamos si el estudiante ya está registrado
+    // First, enhance the embedding quality for better recognition later
+    List<double> enhancedEmbedding = List<double>.from(embedding);
+
+    // Normalize the embedding
+    _normalizeEmbedding(enhancedEmbedding);
+
+    // Apply additional enhancement
+    _enhanceEmbedding(enhancedEmbedding);
+
+    // Check if the student is already registered
     final existingFace = await dbHelper!.queryStudentById(studentId);
 
     if (existingFace.isNotEmpty) {
-      // Borramos el registro existente antes de agregar el nuevo
+      // Delete the existing record before adding the new one
       await dbHelper!.deleteByStudentId(studentId);
       print("Deleted existing face record for student ID: $studentId");
     }
 
     print("Registering face for student ID: $studentId, Name: $name");
-    final String embeddingStr = embedding.map((e) => e.toString()).join(',');
+    final String embeddingStr = enhancedEmbedding
+        .map((e) => e.toString())
+        .join(',');
     final Map<String, dynamic> row = {
       DatabaseHelper.columnName: name,
       DatabaseHelper.columnEmbedding: embeddingStr,
@@ -518,7 +690,7 @@ class Recognizer {
     final id = await dbHelper!.insert(row);
     print("Registered face with ID: $id");
 
-    // Recargar las caras registradas después de agregar una nueva
+    // Reload registered faces after adding a new one
     await _loadRegisteredFacesFromDB();
   }
 
@@ -533,7 +705,7 @@ class Recognizer {
 
   List<dynamic> imageToArray(img.Image inputImage) {
     img.Image resizedImage = img.copyResize(
-      inputImage!,
+      inputImage,
       width: WIDTH,
       height: HEIGHT,
     );
@@ -659,23 +831,57 @@ class Recognizer {
       enhanced = img.copyResize(enhanced, width: WIDTH, height: HEIGHT);
     }
 
-    // 2. Adjust color balance for better recognition
+    // 2. Convert to grayscale and back to RGB to reduce color variations
+    try {
+      enhanced = img.grayscale(enhanced);
+      // Convert back to RGB
+      enhanced = img.copyResize(enhanced, width: WIDTH, height: HEIGHT);
+    } catch (e) {
+      print('Error converting to grayscale: $e');
+    }
+
+    // 3. Adjust color balance for better recognition
     enhanced = img.adjustColor(
       enhanced,
-      saturation: 1.05, // Slightly increase saturation
-      brightness: 1.05, // Slightly increase brightness
-      contrast: 1.25, // Increase contrast
+      saturation: 1.1, // Increase saturation
+      brightness: 1.1, // Increase brightness more
+      contrast: 1.5, // Increase contrast significantly
     );
 
-    // 3. Apply additional adjustments for face recognition
+    // 4. Apply noise reduction to improve feature extraction
     try {
-      // Apply subtle sharpening to enhance facial features
-      // enhanced = img.sharpen(enhanced, amount: 0.3); // Removed sharpen call
+      // Apply a subtle blur to reduce noise
+      enhanced = img.gaussianBlur(enhanced, radius: 1);
     } catch (e) {
-      print('Error applying additional enhancements: $e');
+      print('Error applying noise reduction: $e');
+    }
+
+    // 5. Apply additional contrast enhancement
+    try {
+      // Enhance contrast using a custom algorithm
+      for (int y = 0; y < enhanced.height; y++) {
+        for (int x = 0; x < enhanced.width; x++) {
+          final pixel = enhanced.getPixel(x, y);
+          // Enhance contrast by stretching the histogram
+          final r = _enhancePixelValue(pixel.r.toInt());
+          final g = _enhancePixelValue(pixel.g.toInt());
+          final b = _enhancePixelValue(pixel.b.toInt());
+          enhanced.setPixelRgba(x, y, r, g, b, pixel.a.toInt());
+        }
+      }
+    } catch (e) {
+      print('Error enhancing contrast: $e');
     }
 
     return enhanced;
+  }
+
+  // Helper method to enhance pixel values
+  int _enhancePixelValue(int value) {
+    // Apply a non-linear transformation to enhance contrast
+    final normalized = value / 255.0;
+    final enhanced = math.pow(normalized, 0.8).toDouble() * 255.0;
+    return enhanced.round().clamp(0, 255);
   }
 
   List<double> _averageEmbeddings(List<List<double>> embeddings) {

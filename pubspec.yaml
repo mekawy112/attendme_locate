@@ -39,7 +39,7 @@ dependencies:
   http:
   shared_preferences:
   image_picker: ^1.0.4
-  image:
+  image: ^4.0.17
   google_mlkit_face_detection:
   google_mlkit_commons:
   tflite_flutter:
