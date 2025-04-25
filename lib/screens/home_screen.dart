@@ -111,6 +111,8 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(
           content: Text('Please enter a course code'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.fixed,
+          margin: EdgeInsets.only(bottom: 100, left: 20, right: 20),
         ),
       );
       return;

@@ -266,8 +266,8 @@ class Recognizer {
       }
     }
 
-    // Only return matches with minimum 85% similarity (زيادة من 80% إلى 85%)
-    if (ans != null && bestSimilarity >= 0.85) {
+    // Only return matches with minimum 65% similarity (تخفيض من 85% إلى 65%)
+    if (ans != null && bestSimilarity >= 0.65) {
       return ans;
     }
     // إذا لم يتم العثور على تطابق، نعيد كائن Recognition مع اسم "Unknown"
@@ -674,10 +674,10 @@ class Recognizer {
         }
       }
 
-      // Apply stricter threshold for recognition to prevent false positives
-      // تعديل الحد الأدنى للتعرف على الوجه ليكون أكثر صرامة
+      // Apply a balanced threshold for recognition
+      // تعديل الحد الأدنى للتعرف على الوجه ليكون متوازنًا
       final double minimumThreshold =
-          0.85; // زيادة من 0.75 إلى 0.85 (85% تشابه على الأقل) لتقليل التعرف الخاطئ
+          0.65; // تخفيض من 0.85 إلى 0.65 (65% تشابه على الأقل) للتوازن بين الدقة وسهولة الاستخدام
       if (bestSimilarity < minimumThreshold) {
         print(
           'Best match similarity ${(bestSimilarity * 100).toStringAsFixed(1)}% is below threshold ${(minimumThreshold * 100).toStringAsFixed(1)}%',

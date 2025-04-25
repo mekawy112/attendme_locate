@@ -357,17 +357,24 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           }
         }
       } else {
-        // Método anterior como fallback
+        // Método anterior como fallback con umbral equilibrado
         double threshold =
-            (_studentId != null && _studentId!.isNotEmpty) ? 70.0 : 75.0;
+            (_studentId != null && _studentId!.isNotEmpty)
+                ? 75.0
+                : 80.0; // تعديل من 85.0/90.0 إلى 75.0/80.0
         double similarityPercentage = recognition.distance * 100;
 
         // If face is recognized successfully, send verification to server
-        if (similarityPercentage >= threshold) {
+        if (similarityPercentage >= threshold &&
+            recognition.name.toLowerCase() != "unknown") {
           print(
             "Face verified with similarity: ${similarityPercentage.toStringAsFixed(1)}%",
           );
           await _sendFaceVerificationToServer();
+        } else {
+          print(
+            "Face verification failed: similarity ${similarityPercentage.toStringAsFixed(1)}% is below threshold $threshold% or face is unknown",
+          );
         }
       }
     } catch (e) {
@@ -377,6 +384,8 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           SnackBar(
             content: Text("Error processing face: $e"),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.fixed,
+            margin: EdgeInsets.only(bottom: 100, left: 20, right: 20),
           ),
         );
       }
@@ -548,12 +557,28 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       similarityPercentage = 0.0; // Reset to 0% if invalid
     }
 
-    // Adaptive threshold based on student ID presence
+    // تعديل الحد الأدنى للتشابه ليكون أكثر مرونة
     // If we have a specific student ID, we can use a lower threshold since we're verifying identity
     // If no student ID, we need a higher threshold for general recognition
     double threshold =
-        (_studentId != null && _studentId!.isNotEmpty) ? 70.0 : 75.0;
+        (_studentId != null && _studentId!.isNotEmpty)
+            ? 60.0
+            : 65.0; // تخفيض من 75.0/80.0 إلى 60.0/65.0
     bool isValidSimilarity = similarityPercentage >= threshold;
+
+    // تحقق إضافي: إذا كان الاسم "Unknown" أو "unknown"، فهذا يعني أن الوجه غير معروف
+    bool isUnknownFace = recognition.name.toLowerCase() == "unknown";
+
+    // إذا كان الوجه غير معروف، نعتبره غير صالح حتى لو كانت نسبة التشابه عالية
+    if (isUnknownFace) {
+      isValidSimilarity = false;
+    }
+
+    // تحقق إضافي: إذا كانت نسبة التشابه أقل من 75%، نعتبر الوجه غير معروف
+    if (similarityPercentage < 75.0) {
+      isUnknownFace = true;
+      isValidSimilarity = false;
+    }
 
     // Get student ID for display
     String displayStudentId = _studentId ?? "unknown";
@@ -566,6 +591,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
     print('Valid recognition: $isValidSimilarity');
     print('Student ID: $displayStudentId');
     print('Recognized name: ${recognition.name}');
+    print('Is unknown face: $isUnknownFace');
 
     showDialog(
       context: context,
@@ -592,6 +618,8 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                 Text(
                   isValidSimilarity
                       ? 'Face verified successfully!'
+                      : isUnknownFace
+                      ? 'Unrecognized Face!'
                       : 'Face verification failed!',
                   style: TextStyle(
                     color: isValidSimilarity ? Colors.green : Colors.red,
@@ -604,13 +632,16 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                 Text(
                   isValidSimilarity
                       ? 'Match rate: ${similarityPercentage.toStringAsFixed(1)}%'
+                      : isUnknownFace
+                      ? 'This face is not registered in the system. Please register first.'
                       : 'Low match rate: ${similarityPercentage.toStringAsFixed(1)}%\nThis does not appear to be your face. Please try again with your own face.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: isValidSimilarity ? Colors.green : Colors.red,
                   ),
                 ),
-                if (isValidSimilarity) ...[
+                // فقط إذا كان الوجه معروف وصالح، نعرض الاسم
+                if (isValidSimilarity && !isUnknownFace) ...[
                   const SizedBox(height: 10),
                   Text(
                     'Recognized: ${recognition.name}',
@@ -656,7 +687,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                       ),
                     );
                   },
-                  child: const Text('Register Again'),
+                  child: const Text('Register'),
                 ),
             ],
           ),
