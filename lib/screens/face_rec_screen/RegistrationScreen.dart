@@ -429,51 +429,43 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return similarity.clamp(0.0, 1.0) * 100; // تحويل إلى نسبة مئوية
   }
 
-  // تعديل التحقق من تطابق الوجوه
-  Future<bool> _areFacesMatching(List<List<double>> embeddingsList) async {
-    if (embeddingsList.length < 2) return true;
-
-    try {
-      // استخدام الطريقة الجديدة من كلاس Recognizer للتحقق من تطابق الوجوه
-      return await recognizer.verifyFaceMatching(
-        embeddingsList,
-        threshold: 0.70,
-      );
-    } catch (e) {
-      print('Error checking face matching: $e');
-      return false;
-    }
-  }
+  // Eliminamos la función _areFacesMatching ya que no la utilizamos más
 
   // تحسين التحقق من عدم وجود تسجيل مسبق للوجه
+  // تم تعديل هذه الدالة لتعيد دائمًا true للسماح بتسجيل أي وجه حتى لو كان مسجل مسبقًا
   Future<bool> _verifyNotRegistered(List<List<double>> embeddings) async {
-    try {
-      return await recognizer.verifyNotRegistered(embeddings, threshold: 0.70);
-    } catch (e) {
-      print('Error verifying face uniqueness: $e');
-      return false;
-    }
+    // نتجاهل التحقق من الوجوه المسجلة مسبقًا ونعيد دائمًا true
+    return true;
   }
 
-  // التحقق من وجود وجه مسجل مسبقًا للطالب
-  Future<bool> _checkExistingFace() async {
-    // تأكد من وجود معرف للطالب
-    if (widget.studentId == null || widget.studentId!.isEmpty) {
-      return false;
+  // دالة لمسح جميع الصور المخزنة في الهاتف
+  Future<void> _clearAllFaces() async {
+    try {
+      // استخدام DatabaseHelper لمسح جميع الوجوه المسجلة
+      await databaseHelper.clearAllFaces();
+
+      // إعادة تحميل الوجوه المسجلة في recognizer
+      await recognizer.loadRegisteredFaces();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("All registered faces have been deleted"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error clearing faces: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error clearing faces: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-
-    // استخدام DatabaseHelper للتحقق من وجود الطالب
-    final dbHelper = DatabaseHelper();
-    await dbHelper.init();
-
-    // Consulta personalizada para verificar la existencia del estudiante
-    final result = await dbHelper.query(
-      DatabaseHelper.table,
-      where: '${DatabaseHelper.columnStudentId} = ?',
-      whereArgs: [widget.studentId],
-    );
-
-    return result.isNotEmpty;
   }
 
   // دالة تسجيل الوجوه: معالجة 3 صور، حساب المتوسط وتسجيلها مع اسم الطالب
@@ -538,26 +530,21 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       if (embeddings.length < 3) {
         print('Warning: Could only process ${embeddings.length} of 3 images');
         // If we don't have enough valid images, show warning
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Could only process ${embeddings.length} of 3 images. Quality may be affected.',
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could only process ${embeddings.length} of 3 images. Quality may be affected.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
             ),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-
-      // Second step: verify all faces belong to the same person
-      if (embeddings.length >= 2) {
-        bool facesMatch = await _areFacesMatching(embeddings);
-        if (!facesMatch) {
-          throw Exception(
-            'Detected different faces in the provided images. Please use consistent face images.',
           );
         }
       }
+
+      // Omitimos la verificación de que todas las caras pertenecen a la misma persona
+      // Esto permite registrar 3 fotos tomadas en el mismo momento sin problemas
 
       // Third step: verify this face isn't already registered for another student
       bool notAlreadyRegistered = await _verifyNotRegistered(embeddings);
@@ -585,10 +572,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       // Get appropriate student ID and name
       String studentId = widget.studentId ?? '';
-      String studentName = widget.studentData?['name'] ?? 'Unknown';
+      // Use the name entered by the user in the text field instead of the name from studentData
+      String studentName = nameController.text.trim();
 
       if (studentId.isEmpty) {
         throw Exception('Student ID is required for registration');
+      }
+
+      if (studentName.isEmpty) {
+        throw Exception('Name is required for registration');
       }
 
       // Check if this student already has a registered face
@@ -598,12 +590,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         await databaseHelper.deleteByStudentId(studentId);
       }
 
-      // Save to database - using a string representation of the embedding
-      String embeddingStr = averageEmbedding.map((e) => e.toString()).join(',');
+      // Save to database using the insertFace method
       int result = await databaseHelper.insertFace(
         studentId,
         averageEmbedding,
-        studentName,
+        studentName, // Use the name entered by the user
       );
 
       if (result <= 0) {
@@ -618,44 +609,48 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         isProcessing = false;
       });
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Face registered successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Show success message and navigate back only if widget is still mounted
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Face registered successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-      // Navigate back
-      Navigator.pop(
-        context,
-        true,
-      ); // Return true to indicate successful registration
+        // Navigate back
+        Navigator.pop(
+          context,
+          true,
+        ); // Return true to indicate successful registration
+      }
     } catch (e) {
       setState(() {
         isProcessing = false;
       });
 
-      showDialog(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: Text('Registration Error'),
-              content: Text('Failed to register face: $e'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('OK'),
-                ),
-              ],
-            ),
-      );
+      // Show error dialog only if widget is still mounted
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: Text('Registration Error'),
+                content: Text('Failed to register face: $e'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('OK'),
+                  ),
+                ],
+              ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -664,6 +659,40 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
         backgroundColor: ColorsManager.darkBlueColor1,
         leading: BackButton(color: Colors.white),
+        actions: [
+          // زر لمسح جميع الصور المخزنة في الهاتف
+          IconButton(
+            icon: const Icon(Icons.delete_forever, color: Colors.white),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder:
+                    (context) => AlertDialog(
+                      title: const Text("Delete All Faces"),
+                      content: const Text(
+                        "Are you sure you want to delete all registered faces? This action cannot be undone.",
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text("Cancel"),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            await _clearAllFaces();
+                          },
+                          child: const Text(
+                            "Delete All",
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
