@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="300" height="300" fill="#4A6572" opacity="0.1"/>
+  <text x="150" y="150" font-family="Arial" font-size="24" fill="#4A6572" text-anchor="middle">Mark Attendance</text>
+  <circle cx="150" cy="100" r="40" fill="#4A6572"/>
+  <rect x="130" y="70" width="40" height="60" rx="5" fill="#FFFFFF"/>
+  <rect x="140" y="80" width="20" height="10" rx="2" fill="#4A6572"/>
+  <rect x="135" y="100" width="30" height="5" rx="2" fill="#4A6572"/>
+  <rect x="135" y="110" width="30" height="5" rx="2" fill="#4A6572"/>
+  <circle cx="150" cy="200" r="30" fill="#4A6572" opacity="0.5"/>
+</svg>
